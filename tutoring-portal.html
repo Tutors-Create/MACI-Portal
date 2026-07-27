@@ -274,6 +274,8 @@ function migrate(state){
   (state.assignments||[]).forEach(a=>{
     if(a.dueDate === undefined) a.dueDate = "";
     if(a.submissionType === undefined) a.submissionType = "text";
+    if(a.seenByStudent === undefined) a.seenByStudent = true;
+    if(a.submissionSeenByTutor === undefined) a.submissionSeenByTutor = true;
   });
   migrateInvoicesToCombined(state);
   return state;
@@ -570,7 +572,7 @@ function renderStudentDashboard(){
   html += renderNextSessionWidget(student);
 
   html += `<div class="tabs" style="margin-top:20px;">
-    <button class="tab ${studentHomeTab==="home"?"active":""}" data-shtab="home">Home</button>
+    <button class="tab ${studentHomeTab==="home"?"active":""}" data-shtab="home">Home${tabBadgeHTML(getUnseenAssignmentCount(student.id))}</button>
     <button class="tab ${studentHomeTab==="sessions"?"active":""}" data-shtab="sessions">Sessions &amp; Booking</button>
   </div><div class="tab-panel" style="box-shadow:none;border:1px solid var(--line);">`;
   html += studentHomeTab==="home" ? renderStudentHomeView(student) : renderStudentSessionsView(student);
@@ -647,7 +649,7 @@ function renderStudentHomeView(student){
             ${a.instructions ? `<div class="muted" style="font-size:13px;margin-top:4px;">${escapeHtml(a.instructions)}</div>` : ""}
             ${a.docLink ? `<div style="margin-top:6px;"><a href="${escapeHtml(a.docLink)}" target="_blank" rel="noopener">View reference document</a></div>` : ""}
           </div>
-          ${assignmentStatusBadgeHTML(status)}
+          <div>${!a.seenByStudent ? `<span class="badge cancelled">New</span> ` : ""}${assignmentStatusBadgeHTML(status)}</div>
         </div>
         ${a.submissionType==="link" ? `
         <div class="field" style="margin-top:12px;margin-bottom:8px;">
@@ -737,6 +739,17 @@ function studentSessionCard(s, student){
 }
 
 function wireStudentDashboard(){
+  if(studentHomeTab==="home"){
+    const unseenAsg = STATE.assignments.filter(a=>a.studentId===loggedInStudentId && !a.seenByStudent);
+    if(unseenAsg.length){
+      // Delay the mark-as-seen so the "New" badge actually gets a moment on screen
+      // instead of vanishing before the student's eyes land on Home (their default tab).
+      setTimeout(()=>{
+        const stillUnseen = STATE.assignments.filter(a=>a.studentId===loggedInStudentId && !a.seenByStudent);
+        if(stillUnseen.length){ stillUnseen.forEach(a=>{ a.seenByStudent = true; }); saveState(); }
+      }, 3000);
+    }
+  }
   document.getElementById("logout-btn").onclick = ()=>{ loggedInStudentId = null; render(); };
   document.querySelectorAll('[data-shtab]').forEach(el=>{
     el.onclick = ()=>{ studentHomeTab = el.dataset.shtab; render(); };
@@ -809,6 +822,7 @@ function wireStudentDashboard(){
         a.submissionDocLink = "";
       }
       a.submittedAt = toDateStr(new Date());
+      a.submissionSeenByTutor = false;
       await saveState(); showToast("Submitted."); render();
     };
   });
@@ -1195,11 +1209,21 @@ function getUnseenIntroCount(){
 function tabBadgeHTML(count){
   return count>0 ? ` <span class="badge cancelled" style="margin-left:4px;">${count}</span>` : "";
 }
+function getUnseenAssignmentCount(studentId){
+  return STATE.assignments.filter(a=>a.studentId===studentId && !a.seenByStudent).length;
+}
+function getUnseenSubmissionCount(studentId){
+  return STATE.assignments.filter(a=>a.studentId===studentId && a.submittedAt && !a.submissionSeenByTutor).length;
+}
+function getTotalUnseenSubmissionCount(){
+  return STATE.assignments.filter(a=>a.submittedAt && !a.submissionSeenByTutor).length;
+}
 function renderAdminShell(){
   let html = `<div class="tabs">`;
   ADMIN_TABS.forEach(t=>{
     let label = t.label;
     if(t.id==="sessions") label += tabBadgeHTML(getUnseenIntroCount());
+    if(t.id==="students") label += tabBadgeHTML(getTotalUnseenSubmissionCount());
     if(t.id==="messages") label += tabBadgeHTML(getStaffUnreadCount());
     html += `<button class="tab ${currentTab===t.id?"active":""}" data-tab="${t.id}">${label}</button>`;
   });
@@ -1541,7 +1565,7 @@ function renderStudentsTab(){
   }
   html += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">`;
   STATE.students.forEach(st=>{
-    html += `<button class="btn btn-sm ${st.id===staffStudentSel.studentId?"btn-primary":"btn-ghost"}" data-action="pick-staff-student" data-id="${st.id}">${escapeHtml(st.name)}</button>`;
+    html += `<button class="btn btn-sm ${st.id===staffStudentSel.studentId?"btn-primary":"btn-ghost"}" data-action="pick-staff-student" data-id="${st.id}">${escapeHtml(st.name)}${tabBadgeHTML(getUnseenSubmissionCount(st.id))}</button>`;
   });
   html += `</div>`;
 
@@ -1642,6 +1666,7 @@ function renderStudentDetailCard(s){
             <button class="icon-btn" data-action="del-assignment" data-id="${a.id}">Remove</button>
           </div>
           <div style="margin-top:10px;">
+            ${submitted && !a.submissionSeenByTutor ? `<span class="badge cancelled">New submission</span> ` : ""}
             ${assignmentStatusBadgeHTML(status)}
             ${submitted ? `<span class="muted" style="margin-left:8px;font-size:12px;">${fmtDateSlash(a.submittedAt)}</span>` : ""}
             ${submitted && a.submissionType==="text" && a.submissionText ? `<p style="margin:8px 0 0;white-space:pre-wrap;font-size:13px;">${escapeHtml(a.submissionText)}</p>` : ""}
@@ -1670,6 +1695,18 @@ function renderStudentDetailCard(s){
   return html;
 }
 function wireStudentsTab(){
+  if(staffStudentSel.studentId){
+    const unseenSubs = STATE.assignments.filter(a=>a.studentId===staffStudentSel.studentId && a.submittedAt && !a.submissionSeenByTutor);
+    if(unseenSubs.length){
+      // Delay the mark-as-seen so the "New submission" badge actually gets a moment on
+      // screen instead of vanishing before staff's eyes land here.
+      const sid = staffStudentSel.studentId;
+      setTimeout(()=>{
+        const stillUnseen = STATE.assignments.filter(a=>a.studentId===sid && a.submittedAt && !a.submissionSeenByTutor);
+        if(stillUnseen.length){ stillUnseen.forEach(a=>{ a.submissionSeenByTutor = true; }); saveState(); }
+      }, 3000);
+    }
+  }
   const addBtn = document.getElementById("add-student-btn");
   if(addBtn) addBtn.onclick = async ()=>{
     const name = document.getElementById("ns-name").value.trim();
@@ -1779,7 +1816,8 @@ function wireStudentsTab(){
       const subtypeEl = document.querySelector(`input[name="asg-subtype-${sid}"]:checked`);
       const submissionType = subtypeEl ? subtypeEl.value : "text";
       STATE.assignments.push({ id: uid("asg"), studentId: sid, title, instructions, docLink, dueDate, submissionType,
-        createdAt: toDateStr(new Date()), submissionText: "", submissionDocLink: "", submittedAt: "" });
+        createdAt: toDateStr(new Date()), submissionText: "", submissionDocLink: "", submittedAt: "",
+        seenByStudent: false, submissionSeenByTutor: true });
       await saveState(); showToast("Assignment added."); render();
     };
   });
