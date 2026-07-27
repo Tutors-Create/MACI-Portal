@@ -100,9 +100,6 @@
   .empty{text-align:center;padding:40px 20px;color:var(--ink-faint);}
   .empty .display{font-size:20px;color:var(--ink-soft);margin-bottom:6px;}
   .day-heading{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);margin:18px 0 8px;}
-  .slot-grid{display:flex;flex-wrap:wrap;gap:8px;}
-  .slot-btn{ font-family:'IBM Plex Mono',monospace; font-size:13px; padding:8px 13px; border-radius:7px; border:1px solid var(--accent); background:#fff; color:var(--accent-dark); cursor:pointer; font-weight:600; }
-  .slot-btn:hover{background:var(--accent);color:#fff;}
   .toast{ position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px); background:var(--ink);color:#fff;padding:11px 20px;border-radius:8px; font-size:13.5px;font-weight:500;opacity:0;pointer-events:none; transition:opacity .2s ease, transform .2s ease;z-index:99; }
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
   .modal-overlay{ position:fixed; inset:0; background:rgba(35,48,42,0.45); display:flex; align-items:center; justify-content:center; z-index:200; padding:20px; }
@@ -212,7 +209,7 @@ let introConfirmation = null;
 let currentTab = "sessions";
 let loggedInStudentId = null;
 let loginError = "";
-let bookFlow = { tutorId: null };
+let bookFlow = { tutorId: null, date: "", time: "" };
 let invoiceSel = { studentId: "", month: new Date().toISOString().slice(0,7) };
 let studentHomeTab = "home";
 let newTodoText = "";
@@ -460,34 +457,6 @@ function sortByDueDate(list){
   });
 }
 
-function generateSlots(tutor, daysAhead=21){
-  const out = [];
-  const now = new Date();
-  for(let i=0;i<daysAhead;i++){
-    const d = new Date();
-    d.setDate(now.getDate()+i);
-    const dow = d.getDay();
-    const dateStr = toDateStr(d);
-    const blocks = (tutor.availability||[]).filter(a=>a.day===dow);
-    const daySlots = [];
-    blocks.forEach(b=>{
-      const len = tutor.slotLength || 60;
-      let start = timeToMins(b.start);
-      const end = timeToMins(b.end);
-      while(start + len <= end){
-        const timeStr = minsToTime(start);
-        const isToday = dateStr === toDateStr(now);
-        const isPast = isToday && start <= (now.getHours()*60+now.getMinutes());
-        const taken = STATE.sessions.some(s=>s.tutorId===tutor.id && s.date===dateStr && s.startTime===timeStr && s.status!=="cancelled");
-        if(!isPast && !taken){ daySlots.push(timeStr); }
-        start += len;
-      }
-    });
-    if(daySlots.length){ out.push({date: dateStr, slots: daySlots}); }
-  }
-  return out;
-}
-
 /* ============================= RENDER ROOT ============================= */
 function render(){
   updateFooterLink();
@@ -562,7 +531,7 @@ function renderStudentLoginBox(){
     html += `<p class="muted">Ask your tutor to add you under Manage → Students, and they'll give you a PIN.</p>`;
   }else{
     html += `<p class="muted" style="margin-bottom:14px;">Type your name and the PIN your tutor gave you.</p>
-      <div class="field" style="text-align:center;"><label>Your name</label>
+      <div class="field"><label>Your name</label>
         <input id="login-name" type="text" autocomplete="off" />
       </div>
       <div class="field"><label>Pin</label><input id="login-pin" type="password" maxlength="4" /></div>
@@ -733,16 +702,18 @@ function renderStudentSessionsView(student){
       </select></div>`;
     const tutor = STATE.tutors.find(t=>t.id===bookFlow.tutorId);
     if(tutor){
-      const slotDays = generateSlots(tutor);
-      if(slotDays.length===0){
-        html += `<p class="muted">No open times in the next 3 weeks with this tutor.</p>`;
-      }else{
-        slotDays.forEach(day=>{
-          html += `<div class="day-heading">${fmtDateNice(day.date)}</div><div class="slot-grid">`;
-          day.slots.forEach(t=>{ html += `<button class="slot-btn" data-date="${day.date}" data-time="${t}">${fmtTimeNice(t)}</button>`; });
-          html += `</div>`;
-        });
-      }
+      const len = tutor.slotLength || 60;
+      const times = bookFlow.date ? getTimesForDate(tutor, bookFlow.date, len) : [];
+      html += `<div class="grid-2">
+        <div class="field"><label>Date</label><input type="date" id="pick-date" min="${toDateStr(new Date())}" max="${maxBookingDateStr()}" value="${escapeHtml(bookFlow.date)}"></div>
+        <div class="field"><label>Time</label>
+          <select id="pick-time" ${!bookFlow.date?"disabled":""}>
+            <option value="">${!bookFlow.date ? "Pick a date first" : (times.length ? "Select a time…" : "No times that day")}</option>
+            ${times.map(t=>`<option value="${t}" ${t===bookFlow.time?"selected":""}>${fmtTimeNice(t)}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="book-btn" style="width:100%;" ${!bookFlow.date||!bookFlow.time?"disabled":""}>Book session</button>`;
     }
   }
   return html;
@@ -775,20 +746,24 @@ function wireStudentDashboard(){
   });
 
   const tSel = document.getElementById("pick-tutor");
-  if(tSel) tSel.onchange = ()=>{ bookFlow.tutorId = tSel.value || null; render(); };
-  document.querySelectorAll(".slot-btn").forEach(btn=>{
-    btn.onclick = async ()=>{
-      const date = btn.dataset.date, time = btn.dataset.time;
-      const tutor = STATE.tutors.find(t=>t.id===bookFlow.tutorId);
-      STATE.sessions.push({
-        id: uid("sess"), tutorId: tutor.id, studentId: loggedInStudentId,
-        date, startTime: time, duration: tutor.slotLength || 60, status: "upcoming", notes: ""
-      });
-      await saveState();
-      showToast(`Booked — ${fmtDateNice(date)} at ${fmtTimeNice(time)} with ${tutor.name}`);
-      render();
-    };
-  });
+  if(tSel) tSel.onchange = ()=>{ bookFlow.tutorId = tSel.value || null; bookFlow.date = ""; bookFlow.time = ""; render(); };
+  const dateEl = document.getElementById("pick-date");
+  if(dateEl) dateEl.addEventListener("change", ()=>{ bookFlow.date = dateEl.value; bookFlow.time = ""; render(); });
+  const timeEl = document.getElementById("pick-time");
+  if(timeEl) timeEl.addEventListener("change", ()=>{ bookFlow.time = timeEl.value; render(); });
+  const bookBtn = document.getElementById("book-btn");
+  if(bookBtn) bookBtn.onclick = async ()=>{
+    const tutor = STATE.tutors.find(t=>t.id===bookFlow.tutorId);
+    const date = bookFlow.date, time = bookFlow.time;
+    STATE.sessions.push({
+      id: uid("sess"), tutorId: tutor.id, studentId: loggedInStudentId,
+      date, startTime: time, duration: tutor.slotLength || 60, status: "upcoming", notes: ""
+    });
+    await saveState();
+    showToast(`Booked — ${fmtDateNice(date)} at ${fmtTimeNice(time)} with ${tutor.name}`);
+    bookFlow = { tutorId: null, date: "", time: "" };
+    render();
+  };
   document.querySelectorAll('[data-action="student-cancel"]').forEach(el=>{
     el.onclick = ()=>{
       showConfirmModal("Cancel this session?", async ()=>{
@@ -847,7 +822,7 @@ function renderParentLoginBox(){
     html += `<p class="muted">Ask your tutor to add a parent login under Manage → Parents.</p>`;
   }else{
     html += `<p class="muted" style="margin-bottom:14px;">Type your name and the PIN your tutor gave you.</p>
-      <div class="field" style="text-align:center;"><label>Your name</label>
+      <div class="field"><label>Your name</label>
         <input id="plogin-name" type="text" autocomplete="off" />
       </div>
       <div class="field"><label>Pin</label><input id="plogin-pin" type="password" maxlength="4" /></div>
@@ -884,10 +859,9 @@ function getIntroCallTutor(){
   }
   return STATE.tutors.find(t=>t.name.trim().toLowerCase()==="max") || null;
 }
-function getIntroTimesForDate(tutor, dateStr){
+function getTimesForDate(tutor, dateStr, len){
   const dow = new Date(dateStr+"T00:00:00").getDay();
   const blocks = (tutor.availability||[]).filter(a=>a.day===dow);
-  const len = 30;
   const now = new Date();
   const isToday = dateStr === toDateStr(now);
   const out = [];
@@ -904,6 +878,10 @@ function getIntroTimesForDate(tutor, dateStr){
   });
   return out;
 }
+function maxBookingDateStr(){
+  const d = new Date(); d.setDate(d.getDate()+21);
+  return toDateStr(d);
+}
 function renderIntroCallWidget(){
   const tutor = getIntroCallTutor();
   let html = `<div class="section-title"><h2>Book a free Informational Session</h2></div>`;
@@ -918,9 +896,8 @@ function renderIntroCallWidget(){
     return html;
   }
   const today = toDateStr(new Date());
-  const maxDateObj = new Date(); maxDateObj.setDate(maxDateObj.getDate()+21);
-  const maxDate = toDateStr(maxDateObj);
-  const times = introBooking.date ? getIntroTimesForDate(tutor, introBooking.date) : [];
+  const maxDate = maxBookingDateStr();
+  const times = introBooking.date ? getTimesForDate(tutor, introBooking.date, 30) : [];
   html += `<div class="form-box">
     <p class="muted" style="margin-top:-4px;">Grab a free 30-minute Informational Session with ${escapeHtml(tutor.name)} to see if we're a good fit — no account needed.</p>
     <div class="grid-2">
@@ -1060,16 +1037,18 @@ function renderParentSessionsView(student){
       </select></div>`;
     const tutor = STATE.tutors.find(t=>t.id===bookFlow.tutorId);
     if(tutor){
-      const slotDays = generateSlots(tutor);
-      if(slotDays.length===0){
-        html += `<p class="muted">No open times in the next 3 weeks with this tutor.</p>`;
-      }else{
-        slotDays.forEach(day=>{
-          html += `<div class="day-heading">${fmtDateNice(day.date)}</div><div class="slot-grid">`;
-          day.slots.forEach(t=>{ html += `<button class="slot-btn" data-pdate="${day.date}" data-ptime="${t}">${fmtTimeNice(t)}</button>`; });
-          html += `</div>`;
-        });
-      }
+      const len = tutor.slotLength || 60;
+      const times = bookFlow.date ? getTimesForDate(tutor, bookFlow.date, len) : [];
+      html += `<div class="grid-2">
+        <div class="field"><label>Date</label><input type="date" id="parent-pick-date" min="${toDateStr(new Date())}" max="${maxBookingDateStr()}" value="${escapeHtml(bookFlow.date)}"></div>
+        <div class="field"><label>Time</label>
+          <select id="parent-pick-time" ${!bookFlow.date?"disabled":""}>
+            <option value="">${!bookFlow.date ? "Pick a date first" : (times.length ? "Select a time…" : "No times that day")}</option>
+            ${times.map(t=>`<option value="${t}" ${t===bookFlow.time?"selected":""}>${fmtTimeNice(t)}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="parent-book-btn" style="width:100%;" ${!bookFlow.date||!bookFlow.time?"disabled":""}>Book session</button>`;
     }
   }
   return html;
@@ -1139,7 +1118,7 @@ function wireParentDashboard(){
   const logoutBtn = document.getElementById("plogout-btn");
   if(logoutBtn) logoutBtn.onclick = ()=>{ loggedInParentId = null; render(); };
   document.querySelectorAll('[data-action="pick-parent-student"]').forEach(el=>{
-    el.onclick = ()=>{ parentSel.studentId = el.dataset.id; parentSel.invoiceId = null; bookFlow = { tutorId: null }; render(); };
+    el.onclick = ()=>{ parentSel.studentId = el.dataset.id; parentSel.invoiceId = null; bookFlow = { tutorId: null, date: "", time: "" }; render(); };
   });
   document.querySelectorAll('[data-ptab]').forEach(el=>{
     el.onclick = ()=>{
@@ -1162,21 +1141,25 @@ function wireParentDashboard(){
     render();
   };
   const tSel = document.getElementById("parent-pick-tutor");
-  if(tSel) tSel.onchange = ()=>{ bookFlow.tutorId = tSel.value || null; render(); };
-  document.querySelectorAll('[data-pdate]').forEach(btn=>{
-    btn.onclick = async ()=>{
-      const date = btn.dataset.pdate, time = btn.dataset.ptime;
-      const tutor = STATE.tutors.find(t=>t.id===bookFlow.tutorId);
-      const student = STATE.students.find(s=>s.id===parentSel.studentId);
-      STATE.sessions.push({
-        id: uid("sess"), tutorId: tutor.id, studentId: student.id,
-        date, startTime: time, duration: tutor.slotLength || 60, status: "upcoming", notes: ""
-      });
-      await saveState();
-      showToast(`Booked — ${fmtDateNice(date)} at ${fmtTimeNice(time)} with ${tutor.name}`);
-      render();
-    };
-  });
+  if(tSel) tSel.onchange = ()=>{ bookFlow.tutorId = tSel.value || null; bookFlow.date = ""; bookFlow.time = ""; render(); };
+  const pDateEl = document.getElementById("parent-pick-date");
+  if(pDateEl) pDateEl.addEventListener("change", ()=>{ bookFlow.date = pDateEl.value; bookFlow.time = ""; render(); });
+  const pTimeEl = document.getElementById("parent-pick-time");
+  if(pTimeEl) pTimeEl.addEventListener("change", ()=>{ bookFlow.time = pTimeEl.value; render(); });
+  const pBookBtn = document.getElementById("parent-book-btn");
+  if(pBookBtn) pBookBtn.onclick = async ()=>{
+    const tutor = STATE.tutors.find(t=>t.id===bookFlow.tutorId);
+    const student = STATE.students.find(s=>s.id===parentSel.studentId);
+    const date = bookFlow.date, time = bookFlow.time;
+    STATE.sessions.push({
+      id: uid("sess"), tutorId: tutor.id, studentId: student.id,
+      date, startTime: time, duration: tutor.slotLength || 60, status: "upcoming", notes: ""
+    });
+    await saveState();
+    showToast(`Booked — ${fmtDateNice(date)} at ${fmtTimeNice(time)} with ${tutor.name}`);
+    bookFlow = { tutorId: null, date: "", time: "" };
+    render();
+  };
   document.querySelectorAll('[data-action="student-cancel"]').forEach(el=>{
     el.onclick = ()=>{
       showConfirmModal("Cancel this session?", async ()=>{
@@ -1243,7 +1226,7 @@ function wireAdminShell(){
 }
 
 /* ---------- SESSIONS TAB ---------- */
-let staffBook = { studentId: "", tutorId: "" };
+let staffBook = { studentId: "", tutorId: "", date: "", time: "" };
 
 function renderSessionsTab(){
   const sessions = [...STATE.sessions].filter(s=>s.type!=="intro").sort((a,b)=> (a.date+a.startTime).localeCompare(b.date+b.startTime));
@@ -1295,16 +1278,18 @@ function renderSessionsTab(){
     </div>`;
     const tutor = STATE.tutors.find(t=>t.id===staffBook.tutorId);
     if(tutor){
-      const slotDays = generateSlots(tutor);
-      if(slotDays.length===0){
-        html += `<p class="muted">No open times in the next 3 weeks for this tutor.</p>`;
-      }else{
-        slotDays.forEach(day=>{
-          html += `<div class="day-heading">${fmtDateNice(day.date)}</div><div class="slot-grid">`;
-          day.slots.forEach(t=>{ html += `<button class="slot-btn" data-staffbook-date="${day.date}" data-staffbook-time="${t}">${fmtTimeNice(t)}</button>`; });
-          html += `</div>`;
-        });
-      }
+      const len = tutor.slotLength || 60;
+      const times = staffBook.date ? getTimesForDate(tutor, staffBook.date, len) : [];
+      html += `<div class="grid-2">
+        <div class="field"><label>Date</label><input type="date" id="staff-book-date" min="${toDateStr(new Date())}" max="${maxBookingDateStr()}" value="${escapeHtml(staffBook.date)}"></div>
+        <div class="field"><label>Time</label>
+          <select id="staff-book-time" ${!staffBook.date?"disabled":""}>
+            <option value="">${!staffBook.date ? "Pick a date first" : (times.length ? "Select a time…" : "No times that day")}</option>
+            ${times.map(t=>`<option value="${t}" ${t===staffBook.time?"selected":""}>${fmtTimeNice(t)}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="staff-book-btn" ${!staffBook.date||!staffBook.time?"disabled":""}>Book session</button>`;
     }
   }
   html += `</div>`;
@@ -1399,24 +1384,27 @@ function wireSessionsTab(){
     return;
   }
   const studentSel = document.getElementById("staff-book-student");
-  if(studentSel) studentSel.onchange = ()=>{ staffBook.studentId = studentSel.value; staffBook.tutorId = ""; render(); };
+  if(studentSel) studentSel.onchange = ()=>{ staffBook.studentId = studentSel.value; staffBook.tutorId = ""; staffBook.date = ""; staffBook.time = ""; render(); };
   const tutorSel = document.getElementById("staff-book-tutor");
-  if(tutorSel) tutorSel.onchange = ()=>{ staffBook.tutorId = tutorSel.value; render(); };
-  document.querySelectorAll('[data-staffbook-date]').forEach(btn=>{
-    btn.onclick = async ()=>{
-      const date = btn.dataset.staffbookDate, time = btn.dataset.staffbookTime;
-      const tutor = STATE.tutors.find(t=>t.id===staffBook.tutorId);
-      const student = STATE.students.find(s=>s.id===staffBook.studentId);
-      STATE.sessions.push({
-        id: uid("sess"), tutorId: tutor.id, studentId: student.id,
-        date, startTime: time, duration: tutor.slotLength || 60, status: "upcoming", notes: ""
-      });
-      await saveState();
-      showToast(`Booked ${student.name} — ${fmtDateNice(date)} at ${fmtTimeNice(time)} with ${tutor.name}`);
-      staffBook = { studentId: "", tutorId: "" };
-      render();
-    };
-  });
+  if(tutorSel) tutorSel.onchange = ()=>{ staffBook.tutorId = tutorSel.value; staffBook.date = ""; staffBook.time = ""; render(); };
+  const sDateEl = document.getElementById("staff-book-date");
+  if(sDateEl) sDateEl.addEventListener("change", ()=>{ staffBook.date = sDateEl.value; staffBook.time = ""; render(); });
+  const sTimeEl = document.getElementById("staff-book-time");
+  if(sTimeEl) sTimeEl.addEventListener("change", ()=>{ staffBook.time = sTimeEl.value; render(); });
+  const sBookBtn = document.getElementById("staff-book-btn");
+  if(sBookBtn) sBookBtn.onclick = async ()=>{
+    const tutor = STATE.tutors.find(t=>t.id===staffBook.tutorId);
+    const student = STATE.students.find(s=>s.id===staffBook.studentId);
+    const date = staffBook.date, time = staffBook.time;
+    STATE.sessions.push({
+      id: uid("sess"), tutorId: tutor.id, studentId: student.id,
+      date, startTime: time, duration: tutor.slotLength || 60, status: "upcoming", notes: ""
+    });
+    await saveState();
+    showToast(`Booked ${student.name} — ${fmtDateNice(date)} at ${fmtTimeNice(time)} with ${tutor.name}`);
+    staffBook = { studentId: "", tutorId: "", date: "", time: "" };
+    render();
+  };
   document.querySelectorAll('[data-action]').forEach(el=>{
     el.onclick = async ()=>{
       const id = el.dataset.id;
