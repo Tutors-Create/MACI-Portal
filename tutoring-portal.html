@@ -243,6 +243,34 @@ function randomPin(){
   return String(Math.floor(1000 + Math.random()*9000));
 }
 
+const GRADE_LEVELS = ["Pre-K","K","1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th","11th","12th","Graduated"];
+
+// Grade levels are stored as of a reference date (gradeLevelAsOf) rather than
+// incremented in place, so the displayed grade is always correct no matter
+// when/where it's computed — no background job or write race needed.
+function countAugRollovers(fromDateStr, toDate){
+  const from = new Date(fromDateStr+"T00:00:00");
+  let year = from.getFullYear();
+  let boundary = new Date(year, 7, 1);
+  if(from >= boundary) year++;
+  boundary = new Date(year, 7, 1);
+  let count = 0;
+  while(boundary <= toDate){
+    count++;
+    year++;
+    boundary = new Date(year, 7, 1);
+  }
+  return count;
+}
+function currentGradeLevel(s){
+  if(!s.gradeLevel) return "";
+  const idx = GRADE_LEVELS.indexOf(s.gradeLevel);
+  if(idx===-1) return s.gradeLevel;
+  const asOf = s.gradeLevelAsOf || toDateStr(new Date());
+  const rollovers = countAugRollovers(asOf, new Date());
+  return GRADE_LEVELS[Math.min(idx + rollovers, GRADE_LEVELS.length-1)];
+}
+
 function migrate(state){
   state.settings = Object.assign(defaultState().settings, state.settings || {});
   delete state.settings.paymentInstructions;
@@ -260,6 +288,8 @@ function migrate(state){
     if(s.billToName === undefined) s.billToName = "";
     if(s.billingEmail === undefined) s.billingEmail = "";
     if(s.additionalBillingEmails === undefined) s.additionalBillingEmails = [];
+    if(s.gradeLevel === undefined) s.gradeLevel = "";
+    if(s.gradeLevelAsOf === undefined) s.gradeLevelAsOf = "";
   });
   (state.tutors||[]).forEach(t=>{
     if(t.paymentInfo === undefined) t.paymentInfo = "";
@@ -1551,6 +1581,12 @@ function renderStudentsTab(){
       <div class="field"><label>Bill-to name (for invoices — often a parent, leave blank to use the student's name)</label><input id="ns-billto" placeholder="e.g. Elizabeth Rubin" /></div>
       <div class="field"><label>Billing email (for invoices)</label><input id="ns-billingemail" type="email" placeholder="parent@email.com" /></div>
     </div>
+    <div class="field"><label>Grade level (optional)</label>
+      <select id="ns-grade">
+        <option value="">—</option>
+        ${GRADE_LEVELS.map(g=>`<option value="${g}">${g}</option>`).join("")}
+      </select>
+    </div>
     <button class="btn btn-primary" id="add-student-btn">Add student</button>
     <p class="muted" style="margin-top:8px;">You'll link them to a tutor (and set their rate + Zoom link) right after adding them — a student can have more than one tutor, each with their own Zoom link.</p>
   </div>`;
@@ -1576,10 +1612,11 @@ function renderStudentsTab(){
 function renderStudentDetailCard(s){
     const links = s.tutors || [];
     const extraEmails = s.additionalBillingEmails || [];
+    const gradeNow = currentGradeLevel(s);
     let html = `<div class="card">
       <div class="card-row">
         <div>
-          <div style="font-weight:600;">${escapeHtml(s.name)}</div>
+          <div style="font-weight:600;">${escapeHtml(s.name)}${gradeNow ? ` <span class="muted" style="font-weight:400;font-size:12.5px;">· Grade ${escapeHtml(gradeNow)}</span>` : ""}</div>
           <div class="muted mono" style="font-size:12px;">${escapeHtml(s.email||"no reminder email")}</div>
           <div class="muted mono" style="font-size:12px;">${escapeHtml(s.billingEmail||"no billing email")}${extraEmails.length?` +${extraEmails.length} more`:""} <span class="muted" style="font-family:'Inter',sans-serif;">(billing)</span></div>
         </div>
@@ -1591,6 +1628,19 @@ function renderStudentDetailCard(s){
         <span class="pin-chip">${escapeHtml(s.pin)}</span>
         <button class="icon-btn" data-action="new-pin" data-id="${s.id}">Generate new PIN</button>
       </div>
+
+      <div class="day-heading">Student info</div>
+      <div class="grid-3" style="align-items:end;">
+        <div class="field" style="margin-bottom:0;"><label>Student's name</label><input id="editname-${s.id}" value="${escapeHtml(s.name)}"></div>
+        <div class="field" style="margin-bottom:0;"><label>Reminder email</label><input id="editemail-${s.id}" type="email" value="${escapeHtml(s.email||"")}"></div>
+        <div class="field" style="margin-bottom:0;"><label>Grade level</label>
+          <select id="editgrade-${s.id}">
+            <option value="">—</option>
+            ${GRADE_LEVELS.map(g=>`<option value="${g}" ${gradeNow===g?"selected":""}>${g}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="save-student-info" data-id="${s.id}">Save student info</button>
 
       <div class="grid-3" style="align-items:end;margin-top:10px;">
         <div class="field" style="margin-bottom:0;"><label>Bill-to name (invoices)</label><input id="billto-${s.id}" value="${escapeHtml(s.billToName||"")}" placeholder="Defaults to ${escapeHtml(s.name)}"></div>
@@ -1711,12 +1761,30 @@ function wireStudentsTab(){
   if(addBtn) addBtn.onclick = async ()=>{
     const name = document.getElementById("ns-name").value.trim();
     if(!name){ showToast("Give the student a name first."); return; }
+    const gradeLevel = document.getElementById("ns-grade").value;
     STATE.students.push({ id: uid("stud"), name, email: document.getElementById("ns-email").value.trim(),
-      billToName: document.getElementById("ns-billto").value.trim(), billingEmail: document.getElementById("ns-billingemail").value.trim(), pin: randomPin(), tutors: [] });
+      billToName: document.getElementById("ns-billto").value.trim(), billingEmail: document.getElementById("ns-billingemail").value.trim(), pin: randomPin(), tutors: [],
+      gradeLevel, gradeLevelAsOf: gradeLevel ? toDateStr(new Date()) : "" });
     await saveState(); showToast("Student added — now link a tutor below."); render();
   };
   document.querySelectorAll('[data-action="pick-staff-student"]').forEach(el=>{
     el.onclick = ()=>{ staffStudentSel.studentId = el.dataset.id; render(); };
+  });
+  document.querySelectorAll('[data-action="save-student-info"]').forEach(el=>{
+    el.onclick = async ()=>{
+      const sid = el.dataset.id;
+      const s = STATE.students.find(x=>x.id===sid);
+      const name = document.getElementById(`editname-${sid}`).value.trim();
+      if(!name){ showToast("Student name can't be blank."); return; }
+      s.name = name;
+      s.email = document.getElementById(`editemail-${sid}`).value.trim();
+      const gradeSel = document.getElementById(`editgrade-${sid}`).value;
+      if(gradeSel !== currentGradeLevel(s)){
+        s.gradeLevel = gradeSel;
+        s.gradeLevelAsOf = gradeSel ? toDateStr(new Date()) : "";
+      }
+      await saveState(); showToast("Student info saved."); render();
+    };
   });
   document.querySelectorAll('[data-action="save-billto"]').forEach(el=>{
     el.onclick = async ()=>{
