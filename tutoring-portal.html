@@ -165,7 +165,10 @@
     <div class="empty"><div class="display">Setting up the desk…</div></div>
   </div>
 </div>
-<div class="site-footer"><a href="#" class="footer-link" id="footer-role-link">Staff sign-in</a></div>
+<div class="site-footer">
+  <a href="#" class="footer-link" id="footer-role-link">Staff sign-in</a>
+  <a href="#" class="footer-link" id="footer-role-link-2" style="margin-left:14px;display:none;">Parent sign-in</a>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -184,6 +187,11 @@ let loggedInStudentId = null;
 let loginError = "";
 let bookFlow = { tutorId: null };
 let invoiceSel = { studentId: "", month: new Date().toISOString().slice(0,7) };
+let studentHomeTab = "home";
+let newTodoText = "";
+let loggedInParentId = null;
+let parentLoginError = "";
+let parentSel = { studentId: null, tab: "sessions", invoiceId: null };
 
 function defaultState(){
   return {
@@ -196,8 +204,11 @@ function defaultState(){
     },
     tutors: [],
     students: [],
+    parents: [],
     sessions: [],
-    invoices: []
+    invoices: [],
+    todos: [],
+    assignments: []
   };
 }
 
@@ -209,6 +220,9 @@ function migrate(state){
   state.settings = Object.assign(defaultState().settings, state.settings || {});
   delete state.settings.paymentInstructions;
   state.invoices = state.invoices || [];
+  state.parents = state.parents || [];
+  state.todos = state.todos || [];
+  state.assignments = state.assignments || [];
   (state.students||[]).forEach(s=>{
     if(!s.tutors){
       s.tutors = s.tutorId ? [{ tutorId: s.tutorId, zoomLink: s.zoomLink||"", rate: s.rate||0 }] : [];
@@ -221,7 +235,52 @@ function migrate(state){
   (state.tutors||[]).forEach(t=>{
     if(t.paymentInfo === undefined) t.paymentInfo = "";
   });
+  (state.sessions||[]).forEach(s=>{
+    if(s.notes === undefined) s.notes = "";
+  });
+  (state.parents||[]).forEach(p=>{
+    if(!p.pin) p.pin = randomPin();
+    if(!p.studentIds) p.studentIds = [];
+  });
+  migrateInvoicesToCombined(state);
   return state;
+}
+
+function migrateInvoicesToCombined(state){
+  const legacy = (state.invoices||[]).filter(iv=>iv.tutorId !== undefined);
+  if(legacy.length===0) return;
+  const groups = {};
+  legacy.forEach(iv=>{
+    const key = iv.studentId+"|"+iv.month;
+    if(!groups[key]){
+      groups[key] = { studentId: iv.studentId, month: iv.month, number: iv.number, generatedAt: iv.generatedAt, blocks: [] };
+    }
+    const g = groups[key];
+    if(iv.number < g.number) g.number = iv.number;
+    if(iv.generatedAt > g.generatedAt) g.generatedAt = iv.generatedAt;
+    const tutor = (state.tutors||[]).find(t=>t.id===iv.tutorId);
+    g.blocks.push({
+      tutorId: iv.tutorId,
+      tutorName: tutor ? tutor.name : (iv.lineItems[0] ? iv.lineItems[0].tutorName : "—"),
+      lineItems: iv.lineItems,
+      subtotal: iv.total
+    });
+  });
+  const combined = Object.keys(groups).map(key=>{
+    const g = groups[key];
+    const tutorBlocks = g.blocks.sort((a,b)=>b.lineItems.length-a.lineItems.length);
+    return {
+      id: uid("inv"),
+      number: g.number,
+      studentId: g.studentId,
+      month: g.month,
+      generatedAt: g.generatedAt,
+      tutorBlocks,
+      total: tutorBlocks.reduce((sum,b)=>sum+b.subtotal,0)
+    };
+  });
+  const kept = (state.invoices||[]).filter(iv=>iv.tutorId === undefined);
+  state.invoices = kept.concat(combined);
 }
 
 async function loadState(){
@@ -320,6 +379,16 @@ function render(){
     }
     return;
   }
+  if(currentRole === "parent"){
+    if(!loggedInParentId){
+      app.innerHTML = renderParentLogin();
+      wireParentLogin();
+    }else{
+      app.innerHTML = renderParentDashboard();
+      wireParentDashboard();
+    }
+    return;
+  }
   if(!adminUnlocked){
     app.innerHTML = renderLockScreen();
     wireLockScreen();
@@ -330,17 +399,30 @@ function render(){
 }
 
 function updateFooterLink(){
-  const link = document.getElementById("footer-role-link");
+  const link1 = document.getElementById("footer-role-link");
+  const link2 = document.getElementById("footer-role-link-2");
   if(currentRole === "student"){
-    link.textContent = "Staff sign-in";
+    link1.textContent = "Parent sign-in"; link1.dataset.role = "parent"; link1.style.display = "";
+    link2.textContent = "Staff sign-in"; link2.dataset.role = "admin"; link2.style.display = "";
+  }else if(currentRole === "parent"){
+    link1.textContent = "Student sign-in"; link1.dataset.role = "student"; link1.style.display = "";
+    link2.textContent = "Staff sign-in"; link2.dataset.role = "admin"; link2.style.display = "";
   }else{
-    link.textContent = "Back to student booking";
+    link1.textContent = "Back to sign in"; link1.dataset.role = "student"; link1.style.display = "";
+    link2.style.display = "none";
   }
+}
+function switchRole(role){
+  currentRole = role;
+  render();
 }
 document.getElementById("footer-role-link").onclick = (e)=>{
   e.preventDefault();
-  currentRole = currentRole === "student" ? "admin" : "student";
-  render();
+  switchRole(document.getElementById("footer-role-link").dataset.role);
+};
+document.getElementById("footer-role-link-2").onclick = (e)=>{
+  e.preventDefault();
+  switchRole(document.getElementById("footer-role-link-2").dataset.role);
 };
 
 /* ============================= LOCK SCREEN (staff) ============================= */
@@ -382,6 +464,7 @@ function renderStudentLogin(){
     </div>`;
 }
 function wireStudentLogin(){
+  if(STATE.students.length===0) return;
   const submit = ()=>{
     const typedName = document.getElementById("login-name").value.trim().toLowerCase();
     const pin = document.getElementById("login-pin").value;
@@ -402,6 +485,107 @@ function wireStudentLogin(){
 function renderStudentDashboard(){
   const student = STATE.students.find(s=>s.id===loggedInStudentId);
   if(!student){ loggedInStudentId = null; return renderStudentLogin(); }
+
+  let html = `<div class="tab-panel">`;
+  html += `<div class="greet-row"><h2>Hi, ${escapeHtml(student.name)}</h2><button class="icon-btn" id="logout-btn">Sign out</button></div>`;
+
+  html += renderNextSessionWidget(student);
+
+  html += `<div class="tabs" style="margin-top:20px;">
+    <button class="tab ${studentHomeTab==="home"?"active":""}" data-shtab="home">Home</button>
+    <button class="tab ${studentHomeTab==="sessions"?"active":""}" data-shtab="sessions">Sessions &amp; Booking</button>
+  </div><div class="tab-panel" style="box-shadow:none;border:1px solid var(--line);">`;
+  html += studentHomeTab==="home" ? renderStudentHomeView(student) : renderStudentSessionsView(student);
+  html += `</div>`;
+
+  html += `</div>`;
+  return html;
+}
+
+function renderNextSessionWidget(student){
+  const upcoming = STATE.sessions.filter(s=>s.studentId===student.id && s.status==="upcoming")
+    .sort((a,b)=>(a.date+a.startTime).localeCompare(b.date+b.startTime));
+  const next = upcoming[0];
+  let html = `<div class="card gold" style="margin-top:4px;">`;
+  if(next){
+    const tutor = STATE.tutors.find(t=>t.id===next.tutorId);
+    const link = getLink(student, next.tutorId);
+    html += `<div class="card-row">
+      <div>
+        <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;">Next session</div>
+        <div style="font-weight:600;margin-top:4px;">${tutor?escapeHtml(tutor.name):"—"}</div>
+        <div class="mono muted" style="margin-top:2px;">${fmtDateNice(next.date)} · ${fmtTimeNice(next.startTime)}</div>
+        ${link && link.zoomLink ? `<div style="margin-top:6px;"><a href="${escapeHtml(link.zoomLink)}" target="_blank" rel="noopener">Join Zoom</a></div>` : ""}
+      </div>
+      <button class="btn btn-ghost btn-sm" data-action="goto-sessions">Book / view all</button>
+    </div>`;
+  }else{
+    html += `<div class="card-row">
+      <div>
+        <div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;">Next session</div>
+        <div style="margin-top:4px;">Nothing booked yet.</div>
+      </div>
+      <button class="btn btn-primary btn-sm" data-action="goto-sessions">Book a session</button>
+    </div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function renderStudentHomeView(student){
+  let html = `<div class="section-title"><h2 style="font-size:16px;">To-do list</h2></div>`;
+  const todos = STATE.todos.filter(t=>t.studentId===student.id);
+  if(todos.length===0){
+    html += `<p class="muted">Nothing on your list right now.</p>`;
+  }else{
+    todos.forEach(t=>{
+      html += `<div class="card-row" style="padding:6px 0;border-bottom:1px solid var(--line);">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:400;flex:1;cursor:pointer;">
+          <input type="checkbox" style="width:auto;" data-action="student-toggle-todo" data-id="${t.id}" ${t.done?"checked":""}>
+          <span style="${t.done?"text-decoration:line-through;color:var(--ink-faint);":""}">${escapeHtml(t.text)}</span>
+        </label>
+        ${t.createdBy==="student" ? `<button class="icon-btn" data-action="student-del-todo" data-id="${t.id}">Remove</button>` : ""}
+      </div>`;
+    });
+  }
+  html += `<div class="grid-3" style="align-items:end;margin-top:10px;">
+    <div class="field" style="margin-bottom:0;grid-column:span 2;"><label>Add something</label><input id="student-todo-text" placeholder="e.g. Review flashcards"></div>
+    <button class="btn btn-ghost btn-sm" id="student-add-todo">+ Add</button>
+  </div>`;
+
+  html += `<div class="section-title" style="margin-top:26px;"><h2 style="font-size:16px;">Assignments</h2></div>`;
+  const assignments = STATE.assignments.filter(a=>a.studentId===student.id);
+  if(assignments.length===0){
+    html += `<p class="muted">No assignments yet.</p>`;
+  }else{
+    assignments.forEach(a=>{
+      const submitted = !!a.submittedAt;
+      html += `<div class="card ${submitted?"":"gold"}">
+        <div class="card-row">
+          <div>
+            <div style="font-weight:600;">${escapeHtml(a.title)}</div>
+            ${a.instructions ? `<div class="muted" style="font-size:13px;margin-top:4px;">${escapeHtml(a.instructions)}</div>` : ""}
+            ${a.docLink ? `<div style="margin-top:6px;"><a href="${escapeHtml(a.docLink)}" target="_blank" rel="noopener">View document</a></div>` : ""}
+          </div>
+          <span class="badge ${submitted?"completed":"upcoming"}">${submitted?"Submitted":"Open"}</span>
+        </div>
+        <div class="field" style="margin-top:12px;margin-bottom:8px;">
+          <label>Your answer</label>
+          <textarea id="asg-answer-${a.id}" rows="2" placeholder="Type your answer…">${escapeHtml(a.submissionText||"")}</textarea>
+        </div>
+        <div class="field" style="margin-bottom:8px;">
+          <label>Document link (optional)</label>
+          <input id="asg-answer-doc-${a.id}" value="${escapeHtml(a.submissionDocLink||"")}" placeholder="Paste a link to your document">
+        </div>
+        <button class="btn btn-primary btn-sm" data-action="submit-assignment" data-id="${a.id}">${submitted?"Update submission":"Submit"}</button>
+        ${submitted ? `<span class="muted" style="margin-left:8px;font-size:12px;">Submitted ${fmtDateSlash(a.submittedAt)}</span>` : ""}
+      </div>`;
+    });
+  }
+  return html;
+}
+
+function renderStudentSessionsView(student){
   const links = student.tutors || [];
   const myTutors = links.map(l=>({ link:l, tutor: STATE.tutors.find(t=>t.id===l.tutorId) })).filter(x=>x.tutor);
 
@@ -410,10 +594,7 @@ function renderStudentDashboard(){
   const month = currentMonthStr();
   const thisMonth = mySessions.filter(s=>s.date.slice(0,7)===month).sort((a,b)=>(a.date+a.startTime).localeCompare(b.date+b.startTime));
 
-  let html = `<div class="tab-panel">`;
-  html += `<div class="greet-row"><h2>Hi, ${escapeHtml(student.name)}</h2><button class="icon-btn" id="logout-btn">Sign out</button></div>`;
-
-  html += `<div>${myTutors.map(x=>`<span class="tutor-chip">${escapeHtml(x.tutor.name)}</span>`).join("")}</div>`;
+  let html = `<div>${myTutors.map(x=>`<span class="tutor-chip">${escapeHtml(x.tutor.name)}</span>`).join("")}</div>`;
 
   html += `<div class="section-title" style="margin-top:22px;"><h2 style="font-size:16px;">Upcoming sessions</h2></div>`;
   if(upcoming.length===0){
@@ -452,7 +633,6 @@ function renderStudentDashboard(){
       }
     }
   }
-  html += `</div>`;
   return html;
 }
 
@@ -475,6 +655,13 @@ function studentSessionCard(s, student){
 
 function wireStudentDashboard(){
   document.getElementById("logout-btn").onclick = ()=>{ loggedInStudentId = null; render(); };
+  document.querySelectorAll('[data-shtab]').forEach(el=>{
+    el.onclick = ()=>{ studentHomeTab = el.dataset.shtab; render(); };
+  });
+  document.querySelectorAll('[data-action="goto-sessions"]').forEach(el=>{
+    el.onclick = ()=>{ studentHomeTab = "sessions"; render(); };
+  });
+
   const tSel = document.getElementById("pick-tutor");
   if(tSel) tSel.onchange = ()=>{ bookFlow.tutorId = tSel.value || null; render(); };
   document.querySelectorAll(".slot-btn").forEach(btn=>{
@@ -497,6 +684,234 @@ function wireStudentDashboard(){
       if(s){ s.status = "cancelled"; await saveState(); render(); }
     };
   });
+
+  document.querySelectorAll('[data-action="student-toggle-todo"]').forEach(el=>{
+    el.onchange = async ()=>{
+      const t = STATE.todos.find(x=>x.id===el.dataset.id);
+      t.done = el.checked;
+      await saveState();
+    };
+  });
+  document.querySelectorAll('[data-action="student-del-todo"]').forEach(el=>{
+    el.onclick = async ()=>{
+      STATE.todos = STATE.todos.filter(t=>t.id!==el.dataset.id);
+      await saveState(); render();
+    };
+  });
+  const addTodoBtn = document.getElementById("student-add-todo");
+  if(addTodoBtn) addTodoBtn.onclick = async ()=>{
+    const input = document.getElementById("student-todo-text");
+    const text = input.value.trim();
+    if(!text){ showToast("Type something first."); return; }
+    STATE.todos.push({ id: uid("todo"), studentId: loggedInStudentId, text, done: false, createdBy: "student", createdAt: toDateStr(new Date()) });
+    await saveState(); render();
+  };
+  document.querySelectorAll('[data-action="submit-assignment"]').forEach(el=>{
+    el.onclick = async ()=>{
+      const a = STATE.assignments.find(x=>x.id===el.dataset.id);
+      a.submissionText = document.getElementById(`asg-answer-${a.id}`).value.trim();
+      a.submissionDocLink = document.getElementById(`asg-answer-doc-${a.id}`).value.trim();
+      a.submittedAt = toDateStr(new Date());
+      await saveState(); showToast("Submitted."); render();
+    };
+  });
+}
+
+/* ============================= PARENT LOGIN ============================= */
+function renderParentLogin(){
+  if(STATE.parents.length===0){
+    return `<div class="tab-panel"><div class="empty"><div class="display">No parent accounts set up yet</div><p>Ask your tutor to add a parent login under Manage → Parents.</p></div></div>`;
+  }
+  return `
+    <div class="tab-panel lock-screen">
+      <div class="display" style="font-size:20px;margin-bottom:6px;">Parent sign in</div>
+      <p class="muted" style="margin-bottom:16px;">Type your name and the PIN your tutor gave you.</p>
+      <div class="field" style="text-align:left;"><label>Your name</label>
+        <input id="plogin-name" type="text" placeholder="Your name" autocomplete="off" />
+      </div>
+      <div class="field"><label>Pin</label><input id="plogin-pin" type="password" maxlength="4" /></div>
+      <button class="btn btn-primary" id="plogin-submit" style="width:100%;">Sign in</button>
+      <p class="muted" style="color:var(--danger);margin-top:10px;height:14px;">${parentLoginError}</p>
+    </div>`;
+}
+function wireParentLogin(){
+  if(STATE.parents.length===0) return;
+  const submit = ()=>{
+    const typedName = document.getElementById("plogin-name").value.trim().toLowerCase();
+    const pin = document.getElementById("plogin-pin").value;
+    if(!typedName){ parentLoginError = "Type your name first."; render(); return; }
+    const parent = STATE.parents.find(p=>p.name.trim().toLowerCase()===typedName);
+    if(!parent || parent.pin !== pin){ parentLoginError = "That name and PIN don't match — check with your tutor."; render(); return; }
+    parentLoginError = "";
+    loggedInParentId = parent.id;
+    parentSel = { studentId: (parent.studentIds||[])[0] || null, tab: "sessions", invoiceId: null };
+    bookFlow = { tutorId: null };
+    render();
+  };
+  document.getElementById("plogin-submit").onclick = submit;
+  document.getElementById("plogin-name").addEventListener("keydown", e=>{ if(e.key==="Enter") document.getElementById("plogin-pin").focus(); });
+  document.getElementById("plogin-pin").addEventListener("keydown", e=>{ if(e.key==="Enter") submit(); });
+}
+
+/* ============================= PARENT DASHBOARD ============================= */
+const PARENT_TABS = [
+  {id:"sessions", label:"Sessions"},
+  {id:"invoices", label:"Invoices"},
+  {id:"notes", label:"Session Notes"},
+];
+
+function renderParentDashboard(){
+  const parent = STATE.parents.find(p=>p.id===loggedInParentId);
+  if(!parent){ loggedInParentId = null; return renderParentLogin(); }
+  const myStudents = (parent.studentIds||[]).map(id=>STATE.students.find(s=>s.id===id)).filter(Boolean);
+
+  let html = `<div class="tab-panel">`;
+  html += `<div class="greet-row"><h2>Hi, ${escapeHtml(parent.name)}</h2><button class="icon-btn" id="plogout-btn">Sign out</button></div>`;
+
+  if(myStudents.length===0){
+    html += `<div class="empty"><div class="display">No students linked yet</div><p>Ask your tutor to link a student to your account.</p></div></div>`;
+    return html;
+  }
+  if(!parentSel.studentId || !myStudents.some(s=>s.id===parentSel.studentId)){
+    parentSel.studentId = myStudents[0].id;
+  }
+  const student = myStudents.find(s=>s.id===parentSel.studentId);
+
+  if(myStudents.length>1){
+    html += `<div style="margin-bottom:16px;">${myStudents.map(s=>`<button class="btn btn-sm ${s.id===parentSel.studentId?"btn-primary":"btn-ghost"}" data-action="pick-parent-student" data-id="${s.id}" style="margin-right:6px;">${escapeHtml(s.name)}</button>`).join("")}</div>`;
+  }
+
+  html += `<div class="tabs">`;
+  PARENT_TABS.forEach(t=>{ html += `<button class="tab ${parentSel.tab===t.id?"active":""}" data-ptab="${t.id}">${t.label}</button>`; });
+  html += `</div><div class="tab-panel" style="box-shadow:none;border:1px solid var(--line);">`;
+  if(parentSel.tab==="sessions") html += renderParentSessionsView(student);
+  if(parentSel.tab==="invoices") html += renderParentInvoicesView(student);
+  if(parentSel.tab==="notes") html += renderParentNotesView(student);
+  html += `</div>`;
+
+  html += `</div>`;
+  return html;
+}
+
+function renderParentSessionsView(student){
+  const links = student.tutors || [];
+  const myTutors = links.map(l=>({ link:l, tutor: STATE.tutors.find(t=>t.id===l.tutorId) })).filter(x=>x.tutor);
+  const mySessions = STATE.sessions.filter(s=>s.studentId===student.id);
+  const upcoming = mySessions.filter(s=>s.status==="upcoming").sort((a,b)=>(a.date+a.startTime).localeCompare(b.date+b.startTime));
+
+  let html = `<div class="section-title"><h2 style="font-size:16px;">Upcoming sessions</h2></div>`;
+  if(upcoming.length===0){
+    html += `<p class="muted">Nothing booked yet — pick a time below.</p>`;
+  }else{
+    upcoming.forEach(s=>{ html += studentSessionCard(s, student); });
+  }
+
+  html += `<div class="section-title" style="margin-top:22px;"><h2 style="font-size:16px;">Book a session</h2></div>`;
+  if(myTutors.length===0){
+    html += `<p class="muted">${escapeHtml(student.name)} isn't linked to a tutor yet — ask your tutor to add one under Manage → Students.</p>`;
+  }else{
+    html += `<div class="field"><label>Tutor</label>
+      <select id="parent-pick-tutor">
+        <option value="">Select a tutor…</option>
+        ${myTutors.map(x=>`<option value="${x.tutor.id}" ${x.tutor.id===bookFlow.tutorId?"selected":""}>${escapeHtml(x.tutor.name)}${x.tutor.subjects?" — "+escapeHtml(x.tutor.subjects):""}</option>`).join("")}
+      </select></div>`;
+    const tutor = STATE.tutors.find(t=>t.id===bookFlow.tutorId);
+    if(tutor){
+      const slotDays = generateSlots(tutor);
+      if(slotDays.length===0){
+        html += `<p class="muted">No open times in the next 3 weeks with this tutor.</p>`;
+      }else{
+        slotDays.forEach(day=>{
+          html += `<div class="day-heading">${fmtDateNice(day.date)}</div><div class="slot-grid">`;
+          day.slots.forEach(t=>{ html += `<button class="slot-btn" data-pdate="${day.date}" data-ptime="${t}">${fmtTimeNice(t)}</button>`; });
+          html += `</div>`;
+        });
+      }
+    }
+  }
+  return html;
+}
+
+function renderParentInvoicesView(student){
+  const invoices = STATE.invoices.filter(iv=>iv.studentId===student.id).sort((a,b)=>b.month.localeCompare(a.month));
+  let html = `<div class="section-title"><h2 style="font-size:16px;">Invoices</h2></div>`;
+  if(invoices.length===0){
+    html += `<p class="muted">No invoices generated yet.</p>`;
+    return html;
+  }
+  const selected = invoices.find(iv=>iv.id===parentSel.invoiceId) || invoices[0];
+  html += `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">`;
+  invoices.forEach(iv=>{
+    const monthLabel = new Date(iv.month+"-01T00:00:00").toLocaleDateString(undefined,{month:'long',year:'numeric'});
+    html += `<button class="btn btn-sm ${iv.id===selected.id?"btn-primary":"btn-ghost"}" data-action="pick-invoice" data-id="${iv.id}">${monthLabel} · $${iv.total.toFixed(2)}</button>`;
+  });
+  html += `</div>`;
+  html += buildCombinedInvoiceHTML({ number: selected.number, student, month: selected.month, tutorBlocks: selected.tutorBlocks, total: selected.total, generatedAt: selected.generatedAt }, false);
+  html += `<div class="invoice-actions"><button class="btn btn-primary btn-sm" data-action="parent-print-invoice">Print / Save as PDF</button></div>`;
+  return html;
+}
+
+function renderParentNotesView(student){
+  const notes = STATE.sessions.filter(s=>s.studentId===student.id && s.status==="completed" && s.notes && s.notes.trim())
+    .sort((a,b)=>(b.date+b.startTime).localeCompare(a.date+a.startTime));
+  let html = `<div class="section-title"><h2 style="font-size:16px;">Session notes</h2></div>`;
+  if(notes.length===0){
+    html += `<p class="muted">No session notes yet — they'll show up here once your tutor writes one for a completed session.</p>`;
+    return html;
+  }
+  notes.forEach(s=>{
+    const tutor = STATE.tutors.find(t=>t.id===s.tutorId);
+    html += `<div class="card">
+      <div class="card-row">
+        <div style="font-weight:600;">${tutor?escapeHtml(tutor.name):"—"}</div>
+        <span class="mono muted">${fmtDateNice(s.date)} · ${fmtTimeNice(s.startTime)}</span>
+      </div>
+      <p style="margin:10px 0 0;white-space:pre-wrap;">${escapeHtml(s.notes)}</p>
+    </div>`;
+  });
+  return html;
+}
+
+function wireParentDashboard(){
+  const logoutBtn = document.getElementById("plogout-btn");
+  if(logoutBtn) logoutBtn.onclick = ()=>{ loggedInParentId = null; render(); };
+  document.querySelectorAll('[data-action="pick-parent-student"]').forEach(el=>{
+    el.onclick = ()=>{ parentSel.studentId = el.dataset.id; parentSel.invoiceId = null; bookFlow = { tutorId: null }; render(); };
+  });
+  document.querySelectorAll('[data-ptab]').forEach(el=>{
+    el.onclick = ()=>{ parentSel.tab = el.dataset.ptab; render(); };
+  });
+  const tSel = document.getElementById("parent-pick-tutor");
+  if(tSel) tSel.onchange = ()=>{ bookFlow.tutorId = tSel.value || null; render(); };
+  document.querySelectorAll('[data-pdate]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const date = btn.dataset.pdate, time = btn.dataset.ptime;
+      const tutor = STATE.tutors.find(t=>t.id===bookFlow.tutorId);
+      const student = STATE.students.find(s=>s.id===parentSel.studentId);
+      STATE.sessions.push({
+        id: uid("sess"), tutorId: tutor.id, studentId: student.id,
+        date, startTime: time, duration: tutor.slotLength || 60, status: "upcoming", notes: ""
+      });
+      await saveState();
+      showToast(`Booked — ${fmtDateNice(date)} at ${fmtTimeNice(time)} with ${tutor.name}`);
+      render();
+    };
+  });
+  document.querySelectorAll('[data-action="student-cancel"]').forEach(el=>{
+    el.onclick = async ()=>{
+      if(!confirm("Cancel this session?")) return;
+      const s = STATE.sessions.find(x=>x.id===el.dataset.id);
+      if(s){ s.status = "cancelled"; await saveState(); render(); }
+    };
+  });
+  document.querySelectorAll('[data-action="pick-invoice"]').forEach(el=>{
+    el.onclick = ()=>{ parentSel.invoiceId = el.dataset.id; render(); };
+  });
+  const printBtn = document.querySelector('[data-action="parent-print-invoice"]');
+  if(printBtn) printBtn.onclick = ()=>{
+    document.querySelectorAll('.invoice-doc').forEach(doc=>doc.classList.add('print-active'));
+    window.print();
+  };
 }
 
 /* ============================= ADMIN SHELL ============================= */
@@ -504,6 +919,7 @@ const ADMIN_TABS = [
   {id:"sessions", label:"Sessions"},
   {id:"tutors", label:"Tutors"},
   {id:"students", label:"Students"},
+  {id:"parents", label:"Parents"},
   {id:"invoices", label:"Invoices"},
   {id:"settings", label:"Settings"},
 ];
@@ -515,6 +931,7 @@ function renderAdminShell(){
   if(currentTab==="sessions") html += renderSessionsTab();
   if(currentTab==="tutors") html += renderTutorsTab();
   if(currentTab==="students") html += renderStudentsTab();
+  if(currentTab==="parents") html += renderParentAccountsTab();
   if(currentTab==="invoices") html += renderInvoicesTab();
   if(currentTab==="settings") html += renderSettingsTab();
   html += `</div>`;
@@ -525,6 +942,7 @@ function wireAdminShell(){
   if(currentTab==="sessions") wireSessionsTab();
   if(currentTab==="tutors") wireTutorsTab();
   if(currentTab==="students") wireStudentsTab();
+  if(currentTab==="parents") wireParentAccountsTab();
   if(currentTab==="invoices") wireInvoicesTab();
   if(currentTab==="settings") wireSettingsTab();
 }
@@ -625,6 +1043,12 @@ function sessionCard(s){
       ${s.status==="upcoming" ? `<button class="btn btn-danger btn-sm" data-action="cancel" data-id="${s.id}">Cancel</button>` : ""}
       ${s.status!=="upcoming" ? `<button class="icon-btn" data-action="delete" data-id="${s.id}">Delete record</button>` : ""}
     </div>
+    ${s.status!=="cancelled" ? `
+    <div class="field" style="margin-top:12px;margin-bottom:0;">
+      <label>Session notes ${s.status==="completed" ? "(visible to parent/student)" : "(visible to parent/student once completed)"}</label>
+      <textarea id="notes-${s.id}" rows="2" placeholder="What did you cover, what to work on next…">${escapeHtml(s.notes||"")}</textarea>
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="save-notes" data-id="${s.id}">Save notes</button>
+    </div>` : ""}
   </div>`;
 }
 function wireSessionsTab(){
@@ -656,6 +1080,7 @@ function wireSessionsTab(){
       if(action==="complete"){ s.status="completed"; await saveState(); showToast("Marked completed."); render(); }
       if(action==="cancel"){ s.status="cancelled"; await saveState(); showToast("Session cancelled."); render(); }
       if(action==="delete"){ STATE.sessions = STATE.sessions.filter(x=>x.id!==id); await saveState(); showToast("Record deleted."); render(); }
+      if(action==="save-notes"){ s.notes = document.getElementById(`notes-${id}`).value; await saveState(); showToast("Notes saved."); }
     };
   });
 }
@@ -824,6 +1249,50 @@ function renderStudentsTab(){
         <div class="field" style="margin-bottom:0;"><label>Zoom link</label><input id="link-zoom-${s.id}" placeholder="https://zoom.us/j/..."></div>
       </div>
       <button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="add-link" data-id="${s.id}">+ Link this tutor</button>
+
+      <div class="day-heading">To-do list</div>
+      ${STATE.todos.filter(t=>t.studentId===s.id).map(t=>`
+        <div class="card-row" style="padding:6px 0;border-bottom:1px solid var(--line);">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:400;flex:1;cursor:pointer;">
+            <input type="checkbox" style="width:auto;" data-action="toggle-todo" data-id="${t.id}" ${t.done?"checked":""}>
+            <span style="${t.done?"text-decoration:line-through;color:var(--ink-faint);":""}">${escapeHtml(t.text)}${t.createdBy==="student"?' <span class="muted" style="font-size:11px;">(added by student)</span>':''}</span>
+          </label>
+          <button class="icon-btn" data-action="del-todo" data-id="${t.id}">Remove</button>
+        </div>`).join("")}
+      ${STATE.todos.filter(t=>t.studentId===s.id).length===0 ? `<p class="muted">No to-dos yet.</p>` : ""}
+      <div class="grid-3" style="align-items:end;margin-top:10px;">
+        <div class="field" style="margin-bottom:0;grid-column:span 2;"><label>Add to-do</label><input id="todo-text-${s.id}" placeholder="e.g. Finish worksheet 4"></div>
+        <button class="btn btn-ghost btn-sm" data-action="add-todo" data-id="${s.id}">+ Add</button>
+      </div>
+
+      <div class="day-heading">Assignments</div>
+      ${STATE.assignments.filter(a=>a.studentId===s.id).map(a=>{
+        const submitted = !!a.submittedAt;
+        return `<div class="card" style="background:#FAF8F2;">
+          <div class="card-row">
+            <div>
+              <div style="font-weight:600;">${escapeHtml(a.title)}</div>
+              ${a.instructions ? `<div class="muted" style="font-size:12.5px;margin-top:2px;">${escapeHtml(a.instructions)}</div>` : ""}
+              ${a.docLink ? `<div style="margin-top:4px;"><a href="${escapeHtml(a.docLink)}" target="_blank" rel="noopener">View document</a></div>` : ""}
+            </div>
+            <button class="icon-btn" data-action="del-assignment" data-id="${a.id}">Remove</button>
+          </div>
+          <div style="margin-top:10px;">
+            ${submitted ? `
+              <span class="badge completed">Submitted ${fmtDateSlash(a.submittedAt)}</span>
+              ${a.submissionText ? `<p style="margin:8px 0 0;white-space:pre-wrap;font-size:13px;">${escapeHtml(a.submissionText)}</p>` : ""}
+              ${a.submissionDocLink ? `<div style="margin-top:4px;"><a href="${escapeHtml(a.submissionDocLink)}" target="_blank" rel="noopener">Student's document</a></div>` : ""}
+            ` : `<span class="badge upcoming">Not submitted yet</span>`}
+          </div>
+        </div>`;
+      }).join("")}
+      ${STATE.assignments.filter(a=>a.studentId===s.id).length===0 ? `<p class="muted">No assignments yet.</p>` : ""}
+      <div class="form-box" style="background:#FAF8F2;margin-top:10px;margin-bottom:0;">
+        <div class="field"><label>Title</label><input id="asg-title-${s.id}" placeholder="e.g. Chapter 4 practice set"></div>
+        <div class="field"><label>Instructions</label><textarea id="asg-instructions-${s.id}" rows="2" placeholder="What should they do?"></textarea></div>
+        <div class="field" style="margin-bottom:0;"><label>Document link (optional)</label><input id="asg-doclink-${s.id}" placeholder="https://drive.google.com/..."></div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-action="add-assignment" data-id="${s.id}">+ Add assignment</button>
+      </div>
     </div>`;
   });
   return html;
@@ -880,9 +1349,150 @@ function wireStudentsTab(){
       await saveState(); render();
     };
   });
+  document.querySelectorAll('[data-action="add-todo"]').forEach(el=>{
+    el.onclick = async ()=>{
+      const sid = el.dataset.id;
+      const input = document.getElementById(`todo-text-${sid}`);
+      const text = input.value.trim();
+      if(!text){ showToast("Type a to-do first."); return; }
+      STATE.todos.push({ id: uid("todo"), studentId: sid, text, done: false, createdBy: "tutor", createdAt: toDateStr(new Date()) });
+      await saveState(); showToast("To-do added."); render();
+    };
+  });
+  document.querySelectorAll('[data-action="toggle-todo"]').forEach(el=>{
+    el.onchange = async ()=>{
+      const t = STATE.todos.find(x=>x.id===el.dataset.id);
+      t.done = el.checked;
+      await saveState();
+    };
+  });
+  document.querySelectorAll('[data-action="del-todo"]').forEach(el=>{
+    el.onclick = async ()=>{
+      STATE.todos = STATE.todos.filter(t=>t.id!==el.dataset.id);
+      await saveState(); render();
+    };
+  });
+  document.querySelectorAll('[data-action="add-assignment"]').forEach(el=>{
+    el.onclick = async ()=>{
+      const sid = el.dataset.id;
+      const title = document.getElementById(`asg-title-${sid}`).value.trim();
+      if(!title){ showToast("Give the assignment a title first."); return; }
+      const instructions = document.getElementById(`asg-instructions-${sid}`).value.trim();
+      const docLink = document.getElementById(`asg-doclink-${sid}`).value.trim();
+      STATE.assignments.push({ id: uid("asg"), studentId: sid, title, instructions, docLink,
+        createdAt: toDateStr(new Date()), submissionText: "", submissionDocLink: "", submittedAt: "" });
+      await saveState(); showToast("Assignment added."); render();
+    };
+  });
+  document.querySelectorAll('[data-action="del-assignment"]').forEach(el=>{
+    el.onclick = async ()=>{
+      if(!confirm("Remove this assignment?")) return;
+      STATE.assignments = STATE.assignments.filter(a=>a.id!==el.dataset.id);
+      await saveState(); render();
+    };
+  });
+}
+
+/* ---------- PARENTS TAB ---------- */
+function renderParentAccountsTab(){
+  let html = `<div class="section-title"><h2>Parent accounts</h2></div>`;
+  html += `<div class="form-box"><h3>Add a parent</h3>
+    <div class="field"><label>Parent's name</label><input id="np-name" placeholder="Parent's name" /></div>
+    <button class="btn btn-primary" id="add-parent-btn">Add parent</button>
+    <p class="muted" style="margin-top:8px;">You'll link them to one or more students right after adding them — one parent login can see all their linked kids.</p>
+  </div>`;
+
+  if(STATE.parents.length===0){
+    html += `<div class="empty"><div class="display">No parent accounts yet</div></div>`;
+  }
+  STATE.parents.forEach(p=>{
+    const linkedStudents = (p.studentIds||[]).map(id=>STATE.students.find(s=>s.id===id)).filter(Boolean);
+    html += `<div class="card">
+      <div class="card-row">
+        <div><div style="font-weight:600;">${escapeHtml(p.name)}</div></div>
+        <button class="icon-btn" data-action="del-parent" data-id="${p.id}">Remove</button>
+      </div>
+
+      <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
+        <span class="muted" style="font-size:12px;">PIN:</span>
+        <span class="pin-chip">${escapeHtml(p.pin)}</span>
+        <button class="icon-btn" data-action="new-parent-pin" data-id="${p.id}">Generate new PIN</button>
+      </div>
+
+      <div class="day-heading">Linked students</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+        ${linkedStudents.map(s=>`<span class="badge upcoming mono" style="cursor:pointer;" data-action="unlink-parent-student" data-id="${p.id}" data-sid="${s.id}">${escapeHtml(s.name)} ✕</span>`).join(" ")}
+        ${linkedStudents.length===0 ? `<span class="muted">Not linked to any student yet.</span>` : ""}
+      </div>
+      <div class="grid-3" style="align-items:end;">
+        <div class="field" style="margin-bottom:0;grid-column:span 2;"><label>Link a student</label>
+          <select id="link-student-${p.id}">
+            <option value="">Select…</option>
+            ${STATE.students.filter(s=>!(p.studentIds||[]).includes(s.id)).map(s=>`<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("")}
+          </select>
+        </div>
+        <button class="btn btn-ghost btn-sm" data-action="link-parent-student" data-id="${p.id}">+ Link</button>
+      </div>
+    </div>`;
+  });
+  return html;
+}
+function wireParentAccountsTab(){
+  const addBtn = document.getElementById("add-parent-btn");
+  if(addBtn) addBtn.onclick = async ()=>{
+    const name = document.getElementById("np-name").value.trim();
+    if(!name){ showToast("Give the parent a name first."); return; }
+    STATE.parents.push({ id: uid("parent"), name, pin: randomPin(), studentIds: [] });
+    await saveState(); showToast("Parent added — now link a student below."); render();
+  };
+  document.querySelectorAll('[data-action="del-parent"]').forEach(el=>{
+    el.onclick = async ()=>{
+      if(!confirm("Remove this parent account?")) return;
+      STATE.parents = STATE.parents.filter(p=>p.id!==el.dataset.id);
+      await saveState(); render();
+    };
+  });
+  document.querySelectorAll('[data-action="new-parent-pin"]').forEach(el=>{
+    el.onclick = async ()=>{
+      const p = STATE.parents.find(x=>x.id===el.dataset.id);
+      p.pin = randomPin();
+      await saveState(); showToast(`New PIN: ${p.pin}`); render();
+    };
+  });
+  document.querySelectorAll('[data-action="link-parent-student"]').forEach(el=>{
+    el.onclick = async ()=>{
+      const pid = el.dataset.id;
+      const p = STATE.parents.find(x=>x.id===pid);
+      const sid = document.getElementById(`link-student-${pid}`).value;
+      if(!sid){ showToast("Pick a student first."); return; }
+      p.studentIds = p.studentIds || [];
+      if(!p.studentIds.includes(sid)) p.studentIds.push(sid);
+      await saveState(); showToast("Student linked."); render();
+    };
+  });
+  document.querySelectorAll('[data-action="unlink-parent-student"]').forEach(el=>{
+    el.onclick = async ()=>{
+      const p = STATE.parents.find(x=>x.id===el.dataset.id);
+      p.studentIds = (p.studentIds||[]).filter(id=>id!==el.dataset.sid);
+      await saveState(); render();
+    };
+  });
 }
 
 /* ---------- INVOICES TAB ---------- */
+function computeCombinedInvoiceBlocks(studentId, month){
+  const student = STATE.students.find(s=>s.id===studentId);
+  const links = student ? (student.tutors||[]) : [];
+  const blocks = links.map(link=>{
+    const tutor = STATE.tutors.find(t=>t.id===link.tutorId);
+    if(!tutor) return null;
+    const lineItems = computeLineItems(studentId, tutor.id, month);
+    if(lineItems.length===0) return null;
+    return { tutorId: tutor.id, tutorName: tutor.name, lineItems, subtotal: lineItems.reduce((sum,li)=>sum+li.amount,0) };
+  }).filter(Boolean);
+  blocks.sort((a,b)=>b.lineItems.length-a.lineItems.length);
+  return blocks;
+}
 function computeLineItems(studentId, tutorId, month){
   const student = STATE.students.find(s=>s.id===studentId);
   const sessions = STATE.sessions.filter(s=> s.studentId===studentId && s.tutorId===tutorId && s.status==="completed" && s.date.slice(0,7)===month)
@@ -925,37 +1535,34 @@ function renderInvoicesTab(){
     const links = student.tutors || [];
     if(links.length===0){
       html += `<p class="muted">This student isn't linked to any tutor yet \u2014 add one under Manage \u2192 Students.</p>`;
-    }
-    links.forEach(link=>{
-      const tutor = STATE.tutors.find(t=>t.id===link.tutorId);
-      if(!tutor) return;
-      const saved = STATE.invoices.find(iv=>iv.studentId===invoiceSel.studentId && iv.tutorId===tutor.id && iv.month===invoiceSel.month);
-      const lineItems = saved ? saved.lineItems : computeLineItems(invoiceSel.studentId, tutor.id, invoiceSel.month);
-      const total = saved ? saved.total : lineItems.reduce((sum,li)=>sum+li.amount,0);
+    }else{
+      const saved = STATE.invoices.find(iv=>iv.studentId===invoiceSel.studentId && iv.month===invoiceSel.month);
+      const tutorBlocks = saved ? saved.tutorBlocks : computeCombinedInvoiceBlocks(invoiceSel.studentId, invoiceSel.month);
+      const total = saved ? saved.total : tutorBlocks.reduce((sum,b)=>sum+b.subtotal,0);
       const isDraft = !saved;
 
-      html += `<div class="day-heading">${escapeHtml(tutor.name)}</div>`;
-      html += buildInvoiceHTML({ number: saved ? saved.number : null, student, month: invoiceSel.month, lineItems, total, generatedAt: saved ? saved.generatedAt : toDateStr(new Date()) }, isDraft, tutor.id);
+      html += buildCombinedInvoiceHTML({ number: saved ? saved.number : null, student, month: invoiceSel.month, tutorBlocks, total, generatedAt: saved ? saved.generatedAt : toDateStr(new Date()) }, isDraft);
 
       const monthLabel = new Date(invoiceSel.month+"-01T00:00:00").toLocaleDateString(undefined,{month:'long', year:'numeric'});
       const billName = (student.billToName && student.billToName.trim()) || student.name;
+      const tutorNames = tutorBlocks.map(b=>b.tutorName).join(", ");
       let emailBtnHTML;
       if(student.billingEmail){
-        const subject = `Invoice ${saved?("#"+saved.number+" \u2014 "):""}${monthLabel} \u2014 ${tutor.name}`;
-        const body = `Hi ${billName},\n\nHere's your tutoring invoice for ${monthLabel} with ${tutor.name}.\n\nTotal due: $${total.toFixed(2)}\nTerms: ${STATE.settings.terms}\n\nA copy of the full invoice is attached as a PDF \u2014 print it from this page and save as PDF to attach.\n\nThanks!\n${STATE.settings.businessName}`;
+        const subject = `Invoice ${saved?("#"+saved.number+" \u2014 "):""}${monthLabel}`;
+        const body = `Hi ${billName},\n\nHere's your tutoring invoice for ${monthLabel}${tutorNames?(" with "+tutorNames):""}.\n\nTotal due: $${total.toFixed(2)}\nTerms: ${STATE.settings.terms}\n\nA copy of the full invoice is attached as a PDF \u2014 print it from this page and save as PDF to attach.\n\nThanks!\n${STATE.settings.businessName}`;
         emailBtnHTML = `<a class="btn btn-gold btn-sm" href="${buildMailto(student.billingEmail, subject, body)}" target="_blank" rel="noopener">Email invoice</a>`;
       }else{
         emailBtnHTML = `<span class="btn btn-gold btn-sm" style="opacity:.5;cursor:not-allowed;" title="Add a billing email for this student first">Email invoice</span>`;
       }
 
       html += `<div class="invoice-actions">
-        <button class="btn btn-primary btn-sm" data-action="print-invoice" data-tutor="${tutor.id}">Print / Save as PDF</button>
+        <button class="btn btn-primary btn-sm" data-action="print-invoice">Print / Save as PDF</button>
         ${emailBtnHTML}
-        ${isDraft ? `<button class="btn btn-ghost btn-sm" data-action="generate-invoice" data-tutor="${tutor.id}">Generate &amp; save invoice #${STATE.settings.nextInvoiceNumber}</button>`
-                  : `<button class="btn btn-ghost btn-sm" data-action="regenerate-invoice" data-tutor="${tutor.id}">Regenerate from current sessions</button>`}
+        ${isDraft ? `<button class="btn btn-ghost btn-sm" data-action="generate-invoice">Generate &amp; save invoice #${STATE.settings.nextInvoiceNumber}</button>`
+                  : `<button class="btn btn-ghost btn-sm" data-action="regenerate-invoice">Regenerate from current sessions</button>`}
       </div>
       <p class="muted invoice-note">Emailing sends a short note with the total \u2014 click Print first and save as PDF if you want to attach the full invoice.</p>`;
-    });
+    }
   }
 
   const past = STATE.invoices.slice().sort((a,b)=>b.generatedAt.localeCompare(a.generatedAt)).slice(0,15);
@@ -963,11 +1570,11 @@ function renderInvoicesTab(){
     html += `<div class="section-title" style="margin-top:30px;"><h2 style="font-size:16px;">Previously generated</h2></div>`;
     past.forEach(iv=>{
       const student = STATE.students.find(s=>s.id===iv.studentId);
-      const tutor = STATE.tutors.find(t=>t.id===iv.tutorId);
+      const tutorNames = (iv.tutorBlocks||[]).map(b=>b.tutorName).join(", ");
       html += `<div class="card">
         <div class="card-row">
           <div>
-            <div style="font-weight:600;">#${iv.number} \u2014 ${student?escapeHtml(student.name):"\u2014"}${tutor?" \u00b7 "+escapeHtml(tutor.name):""}</div>
+            <div style="font-weight:600;">#${iv.number} \u2014 ${student?escapeHtml(student.name):"\u2014"}${tutorNames?" \u00b7 "+escapeHtml(tutorNames):""}</div>
             <div class="muted mono" style="font-size:12px;">${new Date(iv.month+"-01T00:00:00").toLocaleDateString(undefined,{month:'long',year:'numeric'})} \u00b7 $${iv.total.toFixed(2)}</div>
           </div>
           <button class="btn btn-ghost btn-sm" data-action="view-invoice" data-student="${iv.studentId}" data-month="${iv.month}">View</button>
@@ -978,22 +1585,34 @@ function renderInvoicesTab(){
   return html;
 }
 
-function buildInvoiceHTML(inv, isDraft, tutorId){
+function buildCombinedInvoiceHTML(inv, isDraft){
   const monthLabel = new Date(inv.month+"-01T00:00:00").toLocaleDateString(undefined,{month:'long', year:'numeric'});
-  const rows = inv.lineItems.length ? inv.lineItems.map(li=>`
-    <tr><td>${fmtDateSlash(li.date)}</td><td>${escapeHtml(li.item)}</td><td>${escapeHtml(li.tutorName)}</td><td>$${li.rate.toFixed(2)}</td><td>$${li.amount.toFixed(2)}</td></tr>
-  `).join("") : `<tr><td colspan="5" class="muted" style="text-align:center;">No completed sessions in ${monthLabel}.</td></tr>`;
+  const blocks = inv.tutorBlocks || [];
+
+  const blocksHTML = blocks.length ? blocks.map(block=>{
+    const rows = block.lineItems.map(li=>`
+      <tr><td>${fmtDateSlash(li.date)}</td><td>${escapeHtml(li.item)}</td><td>$${li.rate.toFixed(2)}</td><td>$${li.amount.toFixed(2)}</td></tr>
+    `).join("");
+    const tutor = STATE.tutors.find(t=>t.id===block.tutorId);
+    const paymentHTML = (tutor && tutor.paymentInfo) ? `
+      <div class="invoice-payment">
+        <span class="lbl">Payment Method (${escapeHtml(block.tutorName)}):</span>
+        <div>${escapeHtml(tutor.paymentInfo)}</div>
+      </div>` : "";
+    return `
+      <div class="day-heading">${escapeHtml(block.tutorName)} — ${block.lineItems.length} session${block.lineItems.length===1?"":"s"}</div>
+      <table class="invoice-items">
+        <thead><tr><th>Date</th><th>Item</th><th>Rate/hour</th><th>Amount</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr class="invoice-total-row"><td colspan="3">Subtotal</td><td>$${block.subtotal.toFixed(2)}</td></tr></tfoot>
+      </table>
+      ${paymentHTML}
+    `;
+  }).join("") : `<p class="muted" style="text-align:center;margin:20px 0;">No completed sessions in ${monthLabel}.</p>`;
 
   const billName = (inv.student.billToName && inv.student.billToName.trim()) || inv.student.name;
 
-  const tutor = STATE.tutors.find(t=>t.id===tutorId);
-  const paymentHTML = (tutor && tutor.paymentInfo) ? `
-    <div class="invoice-payment">
-      <span class="lbl">Payment Method:</span>
-      <div>${escapeHtml(tutor.paymentInfo)}</div>
-    </div>` : "";
-
-  return `<div class="invoice-doc" data-tutor="${tutorId||""}">
+  return `<div class="invoice-doc">
     <div class="invoice-top">
       <div class="invoice-logo"><img src="${document.querySelector('.topbar .site-logo') ? document.querySelector('.topbar .site-logo').src : ''}" alt="${escapeHtml(STATE.settings.businessName)}"><div class="site-lines">${STATE.settings.website?`<div>${escapeHtml(STATE.settings.website)}</div>`:""}${STATE.settings.invoiceEmail?`<div>${escapeHtml(STATE.settings.invoiceEmail)}</div>`:""}</div></div>
       <div class="invoice-title">
@@ -1010,13 +1629,8 @@ function buildInvoiceHTML(inv, isDraft, tutorId){
         <tr><td>Due Date:</td><td>${fmtDateSlash(inv.generatedAt)}</td></tr>
       </tbody></table>
     </div>
-    <table class="invoice-items">
-      <thead><tr><th>Date</th><th>Item</th><th>Tutor</th><th>Rate/hour</th><th>Amount</th></tr></thead>
-      <tbody>${rows}</tbody>
-      ${inv.lineItems.length ? `<tfoot><tr class="invoice-total-row"><td colspan="4">Total</td><td>$${inv.total.toFixed(2)}</td></tr></tfoot>` : ""}
-    </table>
+    ${blocksHTML}
     <div class="invoice-due-row"><span>Balance Due</span><span>$${inv.total.toFixed(2)}</span></div>
-    ${paymentHTML}
   </div>`;
 }
 
@@ -1028,22 +1642,18 @@ function wireInvoicesTab(){
 
   document.querySelectorAll('[data-action="print-invoice"]').forEach(el=>{
     el.onclick = ()=>{
-      const tutorId = el.dataset.tutor;
-      document.querySelectorAll('.invoice-doc').forEach(doc=>{
-        doc.classList.toggle('print-active', doc.dataset.tutor === tutorId);
-      });
+      document.querySelectorAll('.invoice-doc').forEach(doc=>doc.classList.add('print-active'));
       window.print();
     };
   });
 
   document.querySelectorAll('[data-action="generate-invoice"]').forEach(el=>{
     el.onclick = async ()=>{
-      const tutorId = el.dataset.tutor;
-      const lineItems = computeLineItems(invoiceSel.studentId, tutorId, invoiceSel.month);
-      const total = lineItems.reduce((sum,li)=>sum+li.amount,0);
+      const tutorBlocks = computeCombinedInvoiceBlocks(invoiceSel.studentId, invoiceSel.month);
+      const total = tutorBlocks.reduce((sum,b)=>sum+b.subtotal,0);
       const number = STATE.settings.nextInvoiceNumber;
-      STATE.invoices.push({ id: uid("inv"), number, studentId: invoiceSel.studentId, tutorId, month: invoiceSel.month,
-        generatedAt: toDateStr(new Date()), lineItems, total });
+      STATE.invoices.push({ id: uid("inv"), number, studentId: invoiceSel.studentId, month: invoiceSel.month,
+        generatedAt: toDateStr(new Date()), tutorBlocks, total });
       STATE.settings.nextInvoiceNumber = number + 1;
       await saveState(); showToast(`Invoice #${number} saved.`); render();
     };
@@ -1051,10 +1661,9 @@ function wireInvoicesTab(){
   document.querySelectorAll('[data-action="regenerate-invoice"]').forEach(el=>{
     el.onclick = async ()=>{
       if(!confirm("Overwrite the saved invoice with a fresh calculation from current sessions?")) return;
-      const tutorId = el.dataset.tutor;
-      const existing = STATE.invoices.find(iv=>iv.studentId===invoiceSel.studentId && iv.tutorId===tutorId && iv.month===invoiceSel.month);
-      existing.lineItems = computeLineItems(invoiceSel.studentId, tutorId, invoiceSel.month);
-      existing.total = existing.lineItems.reduce((sum,li)=>sum+li.amount,0);
+      const existing = STATE.invoices.find(iv=>iv.studentId===invoiceSel.studentId && iv.month===invoiceSel.month);
+      existing.tutorBlocks = computeCombinedInvoiceBlocks(invoiceSel.studentId, invoiceSel.month);
+      existing.total = existing.tutorBlocks.reduce((sum,b)=>sum+b.subtotal,0);
       existing.generatedAt = toDateStr(new Date());
       await saveState(); showToast("Invoice updated."); render();
     };
