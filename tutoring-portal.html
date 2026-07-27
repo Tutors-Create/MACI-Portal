@@ -262,6 +262,7 @@ function migrate(state){
     if(!s.pin) s.pin = randomPin();
     if(s.billToName === undefined) s.billToName = "";
     if(s.billingEmail === undefined) s.billingEmail = "";
+    if(s.additionalBillingEmails === undefined) s.additionalBillingEmails = [];
   });
   (state.tutors||[]).forEach(t=>{
     if(t.paymentInfo === undefined) t.paymentInfo = "";
@@ -366,6 +367,9 @@ function showToast(msg){
 
 function getLink(student, tutorId){
   return (student.tutors||[]).find(t=>t.tutorId===tutorId) || null;
+}
+function getAllBillingEmails(student){
+  return [student.billingEmail, ...(student.additionalBillingEmails||[])].map(e=>(e||"").trim()).filter(Boolean);
 }
 
 /* ============================= CONFIRM MODAL =============================
@@ -1523,6 +1527,7 @@ function wireTutorsTab(){
 }
 
 /* ---------- STUDENTS TAB ---------- */
+let staffStudentSel = { studentId: null };
 function renderStudentsTab(){
   let html = `<div class="section-title"><h2>Students</h2></div>`;
   html += `<div class="form-box"><h3>Add a student</h3>
@@ -1540,15 +1545,31 @@ function renderStudentsTab(){
 
   if(STATE.students.length===0){
     html += `<div class="empty"><div class="display">No students yet</div></div>`;
+    return html;
   }
-  STATE.students.forEach(s=>{
+
+  if(!staffStudentSel.studentId || !STATE.students.some(s=>s.id===staffStudentSel.studentId)){
+    staffStudentSel.studentId = STATE.students[0].id;
+  }
+  html += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">`;
+  STATE.students.forEach(st=>{
+    html += `<button class="btn btn-sm ${st.id===staffStudentSel.studentId?"btn-primary":"btn-ghost"}" data-action="pick-staff-student" data-id="${st.id}">${escapeHtml(st.name)}</button>`;
+  });
+  html += `</div>`;
+
+  const s = STATE.students.find(x=>x.id===staffStudentSel.studentId);
+  html += renderStudentDetailCard(s);
+  return html;
+}
+function renderStudentDetailCard(s){
     const links = s.tutors || [];
-    html += `<div class="card">
+    const extraEmails = s.additionalBillingEmails || [];
+    let html = `<div class="card">
       <div class="card-row">
         <div>
           <div style="font-weight:600;">${escapeHtml(s.name)}</div>
           <div class="muted mono" style="font-size:12px;">${escapeHtml(s.email||"no reminder email")}</div>
-          <div class="muted mono" style="font-size:12px;">${escapeHtml(s.billingEmail||"no billing email")} <span class="muted" style="font-family:'Inter',sans-serif;">(billing)</span></div>
+          <div class="muted mono" style="font-size:12px;">${escapeHtml(s.billingEmail||"no billing email")}${extraEmails.length?` +${extraEmails.length} more`:""} <span class="muted" style="font-family:'Inter',sans-serif;">(billing)</span></div>
         </div>
         <button class="icon-btn" data-action="del-student" data-id="${s.id}">Remove</button>
       </div>
@@ -1561,8 +1582,18 @@ function renderStudentsTab(){
 
       <div class="grid-3" style="align-items:end;margin-top:10px;">
         <div class="field" style="margin-bottom:0;"><label>Bill-to name (invoices)</label><input id="billto-${s.id}" value="${escapeHtml(s.billToName||"")}" placeholder="Defaults to ${escapeHtml(s.name)}"></div>
-        <div class="field" style="margin-bottom:0;"><label>Billing email (invoices)</label><input id="billingemail-${s.id}" type="email" value="${escapeHtml(s.billingEmail||"")}" placeholder="parent@email.com"></div>
+        <div class="field" style="margin-bottom:0;"><label>Main billing email (invoices)</label><input id="billingemail-${s.id}" type="email" value="${escapeHtml(s.billingEmail||"")}" placeholder="parent@email.com"></div>
         <button class="btn btn-ghost btn-sm" data-action="save-billto" data-id="${s.id}">Save</button>
+      </div>
+
+      <div class="day-heading">Additional billing emails</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+        ${extraEmails.map((e,i)=>`<span class="badge upcoming mono" style="cursor:pointer;" data-action="del-billing-email" data-id="${s.id}" data-idx="${i}">${escapeHtml(e)} ✕</span>`).join(" ")}
+        ${extraEmails.length===0 ? `<span class="muted">None yet — invoices only go to the main billing email above.</span>` : ""}
+      </div>
+      <div class="grid-3" style="align-items:end;margin-bottom:10px;">
+        <div class="field" style="margin-bottom:0;grid-column:span 2;"><label>Add another billing email</label><input id="new-billingemail-${s.id}" type="email" placeholder="e.g. otherparent@email.com"></div>
+        <button class="btn btn-ghost btn-sm" data-action="add-billing-email" data-id="${s.id}">+ Add</button>
       </div>
 
       <div class="day-heading">Tutors &amp; Zoom links</div>
@@ -1648,7 +1679,6 @@ function renderStudentsTab(){
         <button class="btn btn-ghost btn-sm" style="margin-top:14px;" data-action="add-assignment" data-id="${s.id}">+ Add assignment</button>
       </div>
     </div>`;
-  });
   return html;
 }
 function wireStudentsTab(){
@@ -1660,12 +1690,35 @@ function wireStudentsTab(){
       billToName: document.getElementById("ns-billto").value.trim(), billingEmail: document.getElementById("ns-billingemail").value.trim(), pin: randomPin(), tutors: [] });
     await saveState(); showToast("Student added — now link a tutor below."); render();
   };
+  document.querySelectorAll('[data-action="pick-staff-student"]').forEach(el=>{
+    el.onclick = ()=>{ staffStudentSel.studentId = el.dataset.id; render(); };
+  });
   document.querySelectorAll('[data-action="save-billto"]').forEach(el=>{
     el.onclick = async ()=>{
       const s = STATE.students.find(x=>x.id===el.dataset.id);
       s.billToName = document.getElementById(`billto-${el.dataset.id}`).value.trim();
       s.billingEmail = document.getElementById(`billingemail-${el.dataset.id}`).value.trim();
       await saveState(); showToast("Billing details saved.");
+    };
+  });
+  document.querySelectorAll('[data-action="add-billing-email"]').forEach(el=>{
+    el.onclick = async ()=>{
+      const sid = el.dataset.id;
+      const s = STATE.students.find(x=>x.id===sid);
+      const input = document.getElementById(`new-billingemail-${sid}`);
+      const email = input.value.trim();
+      if(!email){ showToast("Type an email first."); return; }
+      s.additionalBillingEmails = s.additionalBillingEmails || [];
+      if(email===s.billingEmail || s.additionalBillingEmails.includes(email)){ showToast("Already on the list."); return; }
+      s.additionalBillingEmails.push(email);
+      await saveState(); showToast("Billing email added."); render();
+    };
+  });
+  document.querySelectorAll('[data-action="del-billing-email"]').forEach(el=>{
+    el.onclick = async ()=>{
+      const s = STATE.students.find(x=>x.id===el.dataset.id);
+      s.additionalBillingEmails.splice(parseInt(el.dataset.idx),1);
+      await saveState(); render();
     };
   });
   document.querySelectorAll('[data-action="del-student"]').forEach(el=>{
@@ -1985,10 +2038,11 @@ function renderInvoicesTab(){
       const billName = (student.billToName && student.billToName.trim()) || student.name;
       const tutorNames = tutorBlocks.map(b=>b.tutorName).join(", ");
       let emailBtnHTML;
-      if(student.billingEmail){
+      const billingEmails = getAllBillingEmails(student);
+      if(billingEmails.length){
         const subject = `Invoice ${saved?("#"+saved.number+" \u2014 "):""}${monthLabel}`;
         const body = `Hi ${billName},\n\nHere's your tutoring invoice for ${monthLabel}${tutorNames?(" with "+tutorNames):""}.\n\nTotal due: $${total.toFixed(2)}\nTerms: ${STATE.settings.terms}\n\nA copy of the full invoice is attached as a PDF \u2014 print it from this page and save as PDF to attach.\n\nThanks!\n${STATE.settings.businessName}`;
-        emailBtnHTML = `<a class="btn btn-gold btn-sm" href="${buildMailto(student.billingEmail, subject, body)}">Email invoice</a>`;
+        emailBtnHTML = `<a class="btn btn-gold btn-sm" href="${buildMailto(billingEmails.join(","), subject, body)}">Email invoice</a>`;
       }else{
         emailBtnHTML = `<span class="btn btn-gold btn-sm" style="opacity:.5;cursor:not-allowed;" title="Add a billing email for this student first">Email invoice</span>`;
       }
