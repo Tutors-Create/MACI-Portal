@@ -171,7 +171,6 @@
 </div>
 <div class="site-footer">
   <a href="#" class="footer-link" id="footer-role-link">Staff sign-in</a>
-  <a href="#" class="footer-link" id="footer-role-link-2" style="margin-left:14px;display:none;">Parent sign-in</a>
 </div>
 <div class="toast" id="toast"></div>
 <div id="confirm-modal-root"></div>
@@ -201,7 +200,9 @@ const DAY_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
 let STATE = null;
 let adminUnlocked = false;
-let currentRole = "student";
+let currentRole = "landing";
+let introBooking = { name: "", email: "" };
+let introConfirmation = null;
 let currentTab = "sessions";
 let loggedInStudentId = null;
 let loginError = "";
@@ -220,7 +221,8 @@ function defaultState(){
       invoiceEmail: "info@mjatutoring.com",
       website: "mjatutoring.com",
       terms: "Due on Receipt",
-      nextInvoiceNumber: 1001
+      nextInvoiceNumber: 1001,
+      introTutorId: ""
     },
     tutors: [],
     students: [],
@@ -473,47 +475,36 @@ function generateSlots(tutor, daysAhead=21){
 function render(){
   updateFooterLink();
   const app = document.getElementById("app");
-  if(currentRole === "student"){
-    if(!loggedInStudentId){
-      app.innerHTML = renderStudentLogin();
-      wireStudentLogin();
+  if(loggedInStudentId){
+    app.innerHTML = renderStudentDashboard();
+    wireStudentDashboard();
+    return;
+  }
+  if(loggedInParentId){
+    app.innerHTML = renderParentDashboard();
+    wireParentDashboard();
+    return;
+  }
+  if(currentRole === "admin"){
+    if(!adminUnlocked){
+      app.innerHTML = renderLockScreen();
+      wireLockScreen();
     }else{
-      app.innerHTML = renderStudentDashboard();
-      wireStudentDashboard();
+      app.innerHTML = renderAdminShell();
+      wireAdminShell();
     }
     return;
   }
-  if(currentRole === "parent"){
-    if(!loggedInParentId){
-      app.innerHTML = renderParentLogin();
-      wireParentLogin();
-    }else{
-      app.innerHTML = renderParentDashboard();
-      wireParentDashboard();
-    }
-    return;
-  }
-  if(!adminUnlocked){
-    app.innerHTML = renderLockScreen();
-    wireLockScreen();
-    return;
-  }
-  app.innerHTML = renderAdminShell();
-  wireAdminShell();
+  app.innerHTML = renderLandingPage();
+  wireLandingPage();
 }
 
 function updateFooterLink(){
   const link1 = document.getElementById("footer-role-link");
-  const link2 = document.getElementById("footer-role-link-2");
-  if(currentRole === "student"){
-    link1.textContent = "Parent sign-in"; link1.dataset.role = "parent"; link1.style.display = "";
-    link2.textContent = "Staff sign-in"; link2.dataset.role = "admin"; link2.style.display = "";
-  }else if(currentRole === "parent"){
-    link1.textContent = "Student sign-in"; link1.dataset.role = "student"; link1.style.display = "";
-    link2.textContent = "Staff sign-in"; link2.dataset.role = "admin"; link2.style.display = "";
+  if(currentRole === "admin"){
+    link1.textContent = "Back to sign in"; link1.dataset.role = "landing";
   }else{
-    link1.textContent = "Back to sign in"; link1.dataset.role = "student"; link1.style.display = "";
-    link2.style.display = "none";
+    link1.textContent = "Staff sign-in"; link1.dataset.role = "admin";
   }
 }
 function switchRole(role){
@@ -523,10 +514,6 @@ function switchRole(role){
 document.getElementById("footer-role-link").onclick = (e)=>{
   e.preventDefault();
   switchRole(document.getElementById("footer-role-link").dataset.role);
-};
-document.getElementById("footer-role-link-2").onclick = (e)=>{
-  e.preventDefault();
-  switchRole(document.getElementById("footer-role-link-2").dataset.role);
 };
 
 /* ============================= LOCK SCREEN (staff) ============================= */
@@ -550,24 +537,25 @@ function wireLockScreen(){
   document.getElementById("pin-input").addEventListener("keydown", e=>{ if(e.key==="Enter") submit(); });
 }
 
-/* ============================= STUDENT LOGIN ============================= */
-function renderStudentLogin(){
+/* ============================= STUDENT LOGIN (box on the landing page) ============================= */
+function renderStudentLoginBox(){
+  let html = `<div class="card" style="margin-bottom:0;">
+    <div class="display" style="font-size:17px;margin-bottom:4px;">Students</div>`;
   if(STATE.students.length===0){
-    return `<div class="tab-panel"><div class="empty"><div class="display">No students set up yet</div><p>Ask your tutor to add you under Manage → Students, and they'll give you a PIN.</p></div></div>`;
-  }
-  return `
-    <div class="tab-panel lock-screen">
-      <div class="display" style="font-size:20px;margin-bottom:6px;">Sign in</div>
-      <p class="muted" style="margin-bottom:16px;">Type your name and the PIN your tutor gave you.</p>
+    html += `<p class="muted">Ask your tutor to add you under Manage → Students, and they'll give you a PIN.</p>`;
+  }else{
+    html += `<p class="muted" style="margin-bottom:14px;">Type your name and the PIN your tutor gave you.</p>
       <div class="field" style="text-align:center;"><label>Your name</label>
         <input id="login-name" type="text" autocomplete="off" />
       </div>
       <div class="field"><label>Pin</label><input id="login-pin" type="password" maxlength="4" /></div>
       <button class="btn btn-primary" id="login-submit" style="width:100%;">Sign in</button>
-      <p class="muted" style="color:var(--danger);margin-top:10px;height:14px;">${loginError}</p>
-    </div>`;
+      <p class="muted" style="color:var(--danger);margin-top:10px;height:14px;">${loginError}</p>`;
+  }
+  html += `</div>`;
+  return html;
 }
-function wireStudentLogin(){
+function wireStudentLoginBox(){
   if(STATE.students.length===0) return;
   const submit = ()=>{
     const typedName = document.getElementById("login-name").value.trim().toLowerCase();
@@ -588,7 +576,7 @@ function wireStudentLogin(){
 /* ============================= STUDENT DASHBOARD ============================= */
 function renderStudentDashboard(){
   const student = STATE.students.find(s=>s.id===loggedInStudentId);
-  if(!student){ loggedInStudentId = null; return renderStudentLogin(); }
+  if(!student){ loggedInStudentId = null; render(); return ""; }
 
   let html = `<div class="tab-panel">`;
   html += `<div class="greet-row"><h2>Hi, ${escapeHtml(student.name)}</h2><button class="icon-btn" id="logout-btn">Sign out</button></div>`;
@@ -834,24 +822,25 @@ function wireStudentDashboard(){
   });
 }
 
-/* ============================= PARENT LOGIN ============================= */
-function renderParentLogin(){
+/* ============================= PARENT LOGIN (box on the landing page) ============================= */
+function renderParentLoginBox(){
+  let html = `<div class="card" style="margin-bottom:0;">
+    <div class="display" style="font-size:17px;margin-bottom:4px;">Parents</div>`;
   if(STATE.parents.length===0){
-    return `<div class="tab-panel"><div class="empty"><div class="display">No parent accounts set up yet</div><p>Ask your tutor to add a parent login under Manage → Parents.</p></div></div>`;
-  }
-  return `
-    <div class="tab-panel lock-screen">
-      <div class="display" style="font-size:20px;margin-bottom:6px;">Parent sign in</div>
-      <p class="muted" style="margin-bottom:16px;">Type your name and the PIN your tutor gave you.</p>
+    html += `<p class="muted">Ask your tutor to add a parent login under Manage → Parents.</p>`;
+  }else{
+    html += `<p class="muted" style="margin-bottom:14px;">Type your name and the PIN your tutor gave you.</p>
       <div class="field" style="text-align:center;"><label>Your name</label>
         <input id="plogin-name" type="text" autocomplete="off" />
       </div>
       <div class="field"><label>Pin</label><input id="plogin-pin" type="password" maxlength="4" /></div>
       <button class="btn btn-primary" id="plogin-submit" style="width:100%;">Sign in</button>
-      <p class="muted" style="color:var(--danger);margin-top:10px;height:14px;">${parentLoginError}</p>
-    </div>`;
+      <p class="muted" style="color:var(--danger);margin-top:10px;height:14px;">${parentLoginError}</p>`;
+  }
+  html += `</div>`;
+  return html;
 }
-function wireParentLogin(){
+function wireParentLoginBox(){
   if(STATE.parents.length===0) return;
   const submit = ()=>{
     const typedName = document.getElementById("plogin-name").value.trim().toLowerCase();
@@ -870,6 +859,86 @@ function wireParentLogin(){
   document.getElementById("plogin-pin").addEventListener("keydown", e=>{ if(e.key==="Enter") submit(); });
 }
 
+/* ============================= LANDING PAGE (intro call + student/parent sign-in) ============================= */
+function getIntroCallTutor(){
+  if(STATE.settings.introTutorId){
+    const t = STATE.tutors.find(t=>t.id===STATE.settings.introTutorId);
+    if(t) return t;
+  }
+  return STATE.tutors.find(t=>t.name.trim().toLowerCase()==="max") || null;
+}
+function renderIntroCallWidget(){
+  const tutor = getIntroCallTutor();
+  let html = `<div class="section-title"><h2>Book a free intro call</h2></div>`;
+  if(!tutor){
+    html += `<p class="muted">Intro call booking isn't set up yet — staff can pick a tutor for it under Manage → Settings.</p>`;
+    return html;
+  }
+  if(introConfirmation){
+    html += `<div class="form-box">
+      <p style="margin:0;">You're booked, ${escapeHtml(introConfirmation.name)}! ${escapeHtml(introConfirmation.tutorName)} will see you ${fmtDateNice(introConfirmation.date)} at ${fmtTimeNice(introConfirmation.time)}. We'll follow up at ${escapeHtml(introConfirmation.email)}.</p>
+    </div>`;
+    return html;
+  }
+  html += `<div class="form-box">
+    <p class="muted" style="margin-top:-4px;">Grab a free 30-minute call with ${escapeHtml(tutor.name)} to see if we're a good fit — no account needed.</p>
+    <div class="grid-2">
+      <div class="field"><label>Your name</label><input id="intro-name" value="${escapeHtml(introBooking.name)}" placeholder="Your name"></div>
+      <div class="field"><label>Your email</label><input id="intro-email" type="email" value="${escapeHtml(introBooking.email)}" placeholder="you@email.com"></div>
+    </div>`;
+  const slotDays = generateSlots({...tutor, slotLength: 30}, 21);
+  if(slotDays.length===0){
+    html += `<p class="muted">No open times in the next 3 weeks — check back soon.</p>`;
+  }else{
+    slotDays.forEach(day=>{
+      html += `<div class="day-heading">${fmtDateNice(day.date)}</div><div class="slot-grid">`;
+      day.slots.forEach(t=>{ html += `<button class="slot-btn" data-introdate="${day.date}" data-introtime="${t}">${fmtTimeNice(t)}</button>`; });
+      html += `</div>`;
+    });
+  }
+  html += `</div>`;
+  return html;
+}
+function renderLandingPage(){
+  let html = `<div class="tab-panel">`;
+  html += renderIntroCallWidget();
+  html += `<div class="section-title" style="margin-top:8px;"><h2>Sign in</h2></div>`;
+  html += `<div class="grid-2">`;
+  html += renderStudentLoginBox();
+  html += renderParentLoginBox();
+  html += `</div>`;
+  html += `</div>`;
+  return html;
+}
+function wireLandingPage(){
+  const nameEl = document.getElementById("intro-name");
+  const emailEl = document.getElementById("intro-email");
+  if(nameEl) nameEl.addEventListener("input", ()=>{ introBooking.name = nameEl.value; });
+  if(emailEl) emailEl.addEventListener("input", ()=>{ introBooking.email = emailEl.value; });
+  document.querySelectorAll('[data-introdate]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const name = (document.getElementById("intro-name").value || "").trim();
+      const email = (document.getElementById("intro-email").value || "").trim();
+      if(!name || !email){ showToast("Add your name and email first."); return; }
+      const tutor = getIntroCallTutor();
+      if(!tutor) return;
+      const date = btn.dataset.introdate, time = btn.dataset.introtime;
+      STATE.sessions.push({
+        id: uid("sess"), tutorId: tutor.id, studentId: null,
+        leadName: name, leadEmail: email,
+        date, startTime: time, duration: 30, status: "upcoming", type: "intro", notes: ""
+      });
+      await saveState();
+      introConfirmation = { name, email, date, time, tutorName: tutor.name };
+      introBooking = { name: "", email: "" };
+      showToast(`Booked — ${fmtDateNice(date)} at ${fmtTimeNice(time)} with ${tutor.name}`);
+      render();
+    };
+  });
+  wireStudentLoginBox();
+  wireParentLoginBox();
+}
+
 /* ============================= PARENT DASHBOARD ============================= */
 const PARENT_TABS = [
   {id:"sessions", label:"Sessions"},
@@ -879,7 +948,7 @@ const PARENT_TABS = [
 
 function renderParentDashboard(){
   const parent = STATE.parents.find(p=>p.id===loggedInParentId);
-  if(!parent){ loggedInParentId = null; return renderParentLogin(); }
+  if(!parent){ loggedInParentId = null; render(); return ""; }
   const myStudents = (parent.studentIds||[]).map(id=>STATE.students.find(s=>s.id===id)).filter(Boolean);
 
   let html = `<div class="tab-panel">`;
@@ -1069,11 +1138,28 @@ function wireAdminShell(){
 let staffBook = { studentId: "", tutorId: "" };
 
 function renderSessionsTab(){
-  const sessions = [...STATE.sessions].sort((a,b)=> (a.date+a.startTime).localeCompare(b.date+b.startTime));
+  const sessions = [...STATE.sessions].filter(s=>s.type!=="intro").sort((a,b)=> (a.date+a.startTime).localeCompare(b.date+b.startTime));
   const upcoming = sessions.filter(s=>s.status==="upcoming");
   const past = sessions.filter(s=>s.status!=="upcoming");
 
-  let html = `<div class="section-title"><h2>Book a session</h2></div>`;
+  const introCalls = [...STATE.sessions].filter(s=>s.type==="intro").sort((a,b)=> (a.date+a.startTime).localeCompare(b.date+b.startTime));
+  const introUpcoming = introCalls.filter(s=>s.status==="upcoming");
+  const introPast = introCalls.filter(s=>s.status!=="upcoming");
+
+  let html = "";
+  if(introUpcoming.length || introPast.length){
+    html += `<div class="section-title"><h2>Intro call requests</h2><span class="muted">${introUpcoming.length} upcoming</span></div>`;
+    if(introUpcoming.length===0){
+      html += `<p class="muted">No upcoming intro calls.</p>`;
+    }else{
+      introUpcoming.forEach(s=>{ html += introCallCard(s); });
+    }
+    if(introPast.length){
+      introPast.slice().reverse().slice(0,15).forEach(s=>{ html += introCallCard(s); });
+    }
+  }
+
+  html += `<div class="section-title" style="margin-top:${introUpcoming.length||introPast.length?"30px":"0"};"><h2>Book a session</h2></div>`;
   html += `<div class="form-box">`;
   if(STATE.students.length===0){
     html += `<p class="muted">Add a student first under Manage → Students.</p>`;
@@ -1167,6 +1253,33 @@ function sessionCard(s){
       <textarea id="notes-${s.id}" rows="2" placeholder="What did you cover, what to work on next…">${escapeHtml(s.notes||"")}</textarea>
       <button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="save-notes" data-id="${s.id}">Save notes</button>
     </div>` : ""}
+  </div>`;
+}
+
+function introCallCard(s){
+  const tutor = STATE.tutors.find(t=>t.id===s.tutorId);
+  let emailBtn = "";
+  if(s.leadEmail){
+    const subject = `Your info call with ${tutor?tutor.name:""} — ${fmtDateNice(s.date)}`;
+    const body = `Hi ${s.leadName},\n\nLooking forward to your free intro call!\n\nTutor: ${tutor?tutor.name:""}\nDate: ${fmtDateNice(s.date)}\nTime: ${fmtTimeNice(s.startTime)}\n\nSee you then!\n${STATE.settings.businessName}`;
+    emailBtn = `<a class="btn btn-gold btn-sm" href="${buildMailto(s.leadEmail, subject, body)}">Email</a>`;
+  }
+  return `
+  <div class="card gold ${s.status==='cancelled'?'danger':''}">
+    <div class="card-row">
+      <div>
+        <div style="font-weight:600;">${escapeHtml(s.leadName||"—")} <span class="muted">· intro call with</span> ${tutor?escapeHtml(tutor.name):"—"}</div>
+        <div class="mono muted" style="margin-top:2px;">${fmtDateNice(s.date)} · ${fmtTimeNice(s.startTime)} · ${s.duration}min</div>
+        <div class="muted mono" style="font-size:12px;margin-top:2px;">${escapeHtml(s.leadEmail||"")}</div>
+      </div>
+      <span class="badge ${s.status}">${s.status}</span>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      ${emailBtn}
+      ${s.status==="upcoming" ? `<button class="btn btn-ghost btn-sm" data-action="complete" data-id="${s.id}">Mark completed</button>` : ""}
+      ${s.status==="upcoming" ? `<button class="btn btn-danger btn-sm" data-action="cancel" data-id="${s.id}">Cancel</button>` : ""}
+      ${s.status!=="upcoming" ? `<button class="icon-btn" data-action="delete" data-id="${s.id}">Delete record</button>` : ""}
+    </div>
   </div>`;
 }
 function wireSessionsTab(){
@@ -1823,6 +1936,13 @@ function renderSettingsTab(){
     </div>
     <div class="field" style="max-width:240px;"><label>Next invoice number</label><input id="set-nextnum" type="number" value="${STATE.settings.nextInvoiceNumber}"></div>
     <p class="muted" style="margin-top:-6px;margin-bottom:14px;">Payment info (Zelle, etc.) is set per tutor now, under Manage → Tutors — each invoice automatically shows the payment info for whichever tutor(s) worked those sessions.</p>
+    <div class="field" style="max-width:280px;"><label>Free intro call tutor</label>
+      <select id="set-introtutor">
+        <option value="">None (hide the booking widget)</option>
+        ${STATE.tutors.map(t=>`<option value="${t.id}" ${t.id===STATE.settings.introTutorId?"selected":""}>${escapeHtml(t.name)}</option>`).join("")}
+      </select>
+    </div>
+    <p class="muted" style="margin-top:-6px;margin-bottom:14px;">This tutor's availability is used for the free 30-minute intro call widget on the sign-in page.</p>
     <button class="btn btn-primary" id="save-settings">Save</button>
     <div class="card danger" style="margin-top:26px;">
       <div style="font-weight:600;margin-bottom:6px;">Reset all data</div>
@@ -1838,6 +1958,7 @@ function wireSettingsTab(){
     STATE.settings.invoiceEmail = document.getElementById("set-email").value.trim();
     STATE.settings.terms = document.getElementById("set-terms").value.trim() || "Due on Receipt";
     STATE.settings.nextInvoiceNumber = parseInt(document.getElementById("set-nextnum").value) || STATE.settings.nextInvoiceNumber;
+    STATE.settings.introTutorId = document.getElementById("set-introtutor").value;
     await saveState(); showToast("Saved.");
   };
   document.getElementById("reset-all").onclick = ()=>{
