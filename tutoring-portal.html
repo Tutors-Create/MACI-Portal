@@ -171,10 +171,25 @@
 </div>
 <div class="toast" id="toast"></div>
 
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+/* ============================= FIREBASE (shared live storage) ============================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyBQFQKFQXyqRH3BDyQgtpsmyKhVofT7iPU",
+  authDomain: "mja-tutoring-maci-portal.firebaseapp.com",
+  projectId: "mja-tutoring-maci-portal",
+  storageBucket: "mja-tutoring-maci-portal.firebasestorage.app",
+  messagingSenderId: "117284366966",
+  appId: "1:117284366966:web:e98833ddf5f32812b48d57"
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+const stateDocRef = doc(db, "tutoring-portal", "shared-state");
+
 /* ============================= DATA LAYER ============================= */
 const ADMIN_PIN = "2468"; // change this to whatever PIN you two want to use for the Manage area
-const STORAGE_KEY = "tutoring-business-data";
 
 const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 const DAY_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -283,20 +298,37 @@ function migrateInvoicesToCombined(state){
   state.invoices = kept.concat(combined);
 }
 
-async function loadState(){
-  try{
-    const res = await window.storage.get(STORAGE_KEY, true);
-    STATE = res ? migrate(JSON.parse(res.value)) : defaultState();
-  }catch(e){
-    STATE = defaultState();
-  }
-  render();
+let stateLoaded = false;
+
+function startStateSync(){
+  onSnapshot(stateDocRef, async (snap)=>{
+    if(snap.metadata.hasPendingWrites) return; // this is the echo of our own not-yet-confirmed write; we already rendered it locally
+    if(!snap.exists()){
+      STATE = defaultState();
+      stateLoaded = true;
+      render();
+      try{ await setDoc(stateDocRef, { json: JSON.stringify(STATE) }); }catch(e){ /* first client to arrive creates it; ignore races */ }
+      return;
+    }
+    STATE = migrate(JSON.parse(snap.data().json));
+    const active = document.activeElement;
+    const isTyping = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA");
+    if(!stateLoaded || !isTyping){ render(); }
+    stateLoaded = true;
+  }, (err)=>{
+    console.error("Firestore sync error", err);
+    if(!stateLoaded){
+      STATE = defaultState();
+      stateLoaded = true;
+      render();
+    }
+    showToast("Couldn't reach the shared database — check your connection.");
+  });
 }
 
 async function saveState(){
   try{
-    const result = await window.storage.set(STORAGE_KEY, JSON.stringify(STATE), true);
-    if(!result) showToast("Couldn't save — check your connection.");
+    await setDoc(stateDocRef, { json: JSON.stringify(STATE) });
   }catch(e){
     showToast("Couldn't save — check your connection.");
   }
@@ -1717,7 +1749,7 @@ function escapeHtml(str){
 }
 
 /* ============================= INIT ============================= */
-loadState();
+startStateSync();
 </script>
 </body>
 </html>
