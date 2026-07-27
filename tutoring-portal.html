@@ -105,6 +105,10 @@
   .slot-btn:hover{background:var(--accent);color:#fff;}
   .toast{ position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px); background:var(--ink);color:#fff;padding:11px 20px;border-radius:8px; font-size:13.5px;font-weight:500;opacity:0;pointer-events:none; transition:opacity .2s ease, transform .2s ease;z-index:99; }
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .modal-overlay{ position:fixed; inset:0; background:rgba(35,48,42,0.45); display:flex; align-items:center; justify-content:center; z-index:200; padding:20px; }
+  .modal-box{ background:var(--surface); border-radius:var(--radius); padding:22px; max-width:380px; width:100%; box-shadow:var(--shadow); }
+  .modal-box p{ margin:0 0 18px; font-size:14px; color:var(--ink); line-height:1.5; }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:8px; }
   .lock-screen{max-width:340px;margin:40px auto;text-align:center;}
   .lock-screen input{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:18px;letter-spacing:.2em;}
   .icon-btn{background:none;border:none;cursor:pointer;color:var(--ink-faint);font-size:13px;padding:2px 4px;text-decoration:underline;}
@@ -170,6 +174,7 @@
   <a href="#" class="footer-link" id="footer-role-link-2" style="margin-left:14px;display:none;">Parent sign-in</a>
 </div>
 <div class="toast" id="toast"></div>
+<div id="confirm-modal-root"></div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
@@ -189,7 +194,7 @@ const db = getFirestore(firebaseApp);
 const stateDocRef = doc(db, "tutoring-portal", "shared-state");
 
 /* ============================= DATA LAYER ============================= */
-const ADMIN_PIN = "2468"; // change this to whatever PIN you two want to use for the Manage area
+const ADMIN_PIN = "0308"; // change this to whatever PIN you two want to use for the Manage area
 
 const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 const DAY_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -256,6 +261,10 @@ function migrate(state){
   (state.parents||[]).forEach(p=>{
     if(!p.pin) p.pin = randomPin();
     if(!p.studentIds) p.studentIds = [];
+  });
+  (state.assignments||[]).forEach(a=>{
+    if(a.dueDate === undefined) a.dueDate = "";
+    if(a.submissionType === undefined) a.submissionType = "text";
   });
   migrateInvoicesToCombined(state);
   return state;
@@ -348,6 +357,39 @@ function getLink(student, tutorId){
   return (student.tutors||[]).find(t=>t.tutorId===tutorId) || null;
 }
 
+/* ============================= CONFIRM MODAL =============================
+   Google Sites embeds this page in a sandboxed iframe that blocks
+   window.confirm(), which silently no-ops every "are you sure?" action.
+   This is an in-page replacement. */
+let pendingConfirm = null;
+function showConfirmModal(message, onConfirm){
+  pendingConfirm = { message, onConfirm };
+  renderConfirmModal();
+}
+function renderConfirmModal(){
+  const root = document.getElementById("confirm-modal-root");
+  if(!pendingConfirm){ root.innerHTML = ""; return; }
+  root.innerHTML = `
+    <div class="modal-overlay" id="confirm-modal-overlay">
+      <div class="modal-box">
+        <p>${escapeHtml(pendingConfirm.message)}</p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost btn-sm" id="confirm-modal-cancel">Cancel</button>
+          <button class="btn btn-danger btn-sm" id="confirm-modal-ok">Confirm</button>
+        </div>
+      </div>
+    </div>`;
+  const close = ()=>{ pendingConfirm = null; renderConfirmModal(); };
+  document.getElementById("confirm-modal-cancel").onclick = close;
+  document.getElementById("confirm-modal-overlay").onclick = (e)=>{ if(e.target.id==="confirm-modal-overlay") close(); };
+  document.getElementById("confirm-modal-ok").onclick = ()=>{
+    const cb = pendingConfirm.onConfirm;
+    pendingConfirm = null;
+    renderConfirmModal();
+    cb();
+  };
+}
+
 /* ============================= DATE HELPERS ============================= */
 function pad(n){ return n.toString().padStart(2,"0"); }
 function toDateStr(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
@@ -368,6 +410,36 @@ function fmtTimeNice(t){
 function minsToTime(mins){ return pad(Math.floor(mins/60)) + ":" + pad(mins%60); }
 function timeToMins(t){ const [h,m] = t.split(":").map(Number); return h*60+m; }
 function currentMonthStr(){ return new Date().toISOString().slice(0,7); }
+
+/* ============================= ASSIGNMENTS (Canvas-style status) ============================= */
+function assignmentStatus(a){
+  const submitted = !!a.submittedAt;
+  if(submitted){
+    if(a.dueDate && a.submittedAt > a.dueDate) return "late";
+    return "submitted";
+  }
+  const today = toDateStr(new Date());
+  if(a.dueDate && today > a.dueDate) return "missing";
+  return "open";
+}
+function assignmentStatusBadgeHTML(status){
+  const map = {
+    submitted: {cls:"completed", label:"Submitted"},
+    late: {cls:"completed", label:"Submitted late"},
+    missing: {cls:"cancelled", label:"Missing"},
+    open: {cls:"upcoming", label:"Not submitted"}
+  };
+  const s = map[status];
+  return `<span class="badge ${s.cls}">${s.label}</span>`;
+}
+function sortByDueDate(list){
+  return list.slice().sort((a,b)=>{
+    if(a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+    if(a.dueDate) return -1;
+    if(b.dueDate) return 1;
+    return (a.createdAt||"").localeCompare(b.createdAt||"");
+  });
+}
 
 function generateSlots(tutor, daysAhead=21){
   const out = [];
@@ -462,7 +534,7 @@ function renderLockScreen(){
   return `
     <div class="tab-panel lock-screen">
       <div class="display" style="font-size:20px;margin-bottom:6px;">Staff area</div>
-      <p class="muted" style="margin-bottom:16px;">Enter the desk PIN to manage tutors, students, and invoices. This is a light gate, not real security.</p>
+      <p class="muted" style="margin-bottom:16px;">Enter the desk PIN to manage tutors, students, and invoices.</p>
       <div class="field"><label>Pin</label><input id="pin-input" type="password" maxlength="8" /></div>
       <button class="btn btn-primary" id="pin-submit" style="width:100%;">Unlock</button>
       <p class="muted" id="pin-error" style="color:var(--danger);margin-top:10px;height:14px;"></p>
@@ -487,8 +559,8 @@ function renderStudentLogin(){
     <div class="tab-panel lock-screen">
       <div class="display" style="font-size:20px;margin-bottom:6px;">Sign in</div>
       <p class="muted" style="margin-bottom:16px;">Type your name and the PIN your tutor gave you.</p>
-      <div class="field" style="text-align:left;"><label>Your name</label>
-        <input id="login-name" type="text" placeholder="Your name" autocomplete="off" />
+      <div class="field" style="text-align:center;"><label>Your name</label>
+        <input id="login-name" type="text" autocomplete="off" />
       </div>
       <div class="field"><label>Pin</label><input id="login-pin" type="password" maxlength="4" /></div>
       <button class="btn btn-primary" id="login-submit" style="width:100%;">Sign in</button>
@@ -586,31 +658,34 @@ function renderStudentHomeView(student){
   </div>`;
 
   html += `<div class="section-title" style="margin-top:26px;"><h2 style="font-size:16px;">Assignments</h2></div>`;
-  const assignments = STATE.assignments.filter(a=>a.studentId===student.id);
+  const assignments = sortByDueDate(STATE.assignments.filter(a=>a.studentId===student.id));
   if(assignments.length===0){
     html += `<p class="muted">No assignments yet.</p>`;
   }else{
     assignments.forEach(a=>{
       const submitted = !!a.submittedAt;
-      html += `<div class="card ${submitted?"":"gold"}">
+      const status = assignmentStatus(a);
+      html += `<div class="card ${status==="missing"?"danger":(submitted?"":"gold")}">
         <div class="card-row">
           <div>
             <div style="font-weight:600;">${escapeHtml(a.title)}</div>
+            <div class="mono muted" style="font-size:11.5px;margin-top:2px;">${a.dueDate?("Due "+fmtDateNice(a.dueDate)):"No due date"}</div>
             ${a.instructions ? `<div class="muted" style="font-size:13px;margin-top:4px;">${escapeHtml(a.instructions)}</div>` : ""}
-            ${a.docLink ? `<div style="margin-top:6px;"><a href="${escapeHtml(a.docLink)}" target="_blank" rel="noopener">View document</a></div>` : ""}
+            ${a.docLink ? `<div style="margin-top:6px;"><a href="${escapeHtml(a.docLink)}" target="_blank" rel="noopener">View reference document</a></div>` : ""}
           </div>
-          <span class="badge ${submitted?"completed":"upcoming"}">${submitted?"Submitted":"Open"}</span>
+          ${assignmentStatusBadgeHTML(status)}
         </div>
+        ${a.submissionType==="link" ? `
+        <div class="field" style="margin-top:12px;margin-bottom:8px;">
+          <label>Link to your file (Google Drive, etc.)</label>
+          <input id="asg-answer-doc-${a.id}" value="${escapeHtml(a.submissionDocLink||"")}" placeholder="https://drive.google.com/...">
+        </div>` : `
         <div class="field" style="margin-top:12px;margin-bottom:8px;">
           <label>Your answer</label>
           <textarea id="asg-answer-${a.id}" rows="2" placeholder="Type your answer…">${escapeHtml(a.submissionText||"")}</textarea>
-        </div>
-        <div class="field" style="margin-bottom:8px;">
-          <label>Document link (optional)</label>
-          <input id="asg-answer-doc-${a.id}" value="${escapeHtml(a.submissionDocLink||"")}" placeholder="Paste a link to your document">
-        </div>
+        </div>`}
         <button class="btn btn-primary btn-sm" data-action="submit-assignment" data-id="${a.id}">${submitted?"Update submission":"Submit"}</button>
-        ${submitted ? `<span class="muted" style="margin-left:8px;font-size:12px;">Submitted ${fmtDateSlash(a.submittedAt)}</span>` : ""}
+        ${submitted ? `<span class="muted" style="margin-left:8px;font-size:12px;">Submitted ${fmtDateSlash(a.submittedAt)}${status==="late"?" (late)":""}</span>` : ""}
       </div>`;
     });
   }
@@ -710,10 +785,11 @@ function wireStudentDashboard(){
     };
   });
   document.querySelectorAll('[data-action="student-cancel"]').forEach(el=>{
-    el.onclick = async ()=>{
-      if(!confirm("Cancel this session?")) return;
-      const s = STATE.sessions.find(x=>x.id===el.dataset.id);
-      if(s){ s.status = "cancelled"; await saveState(); render(); }
+    el.onclick = ()=>{
+      showConfirmModal("Cancel this session?", async ()=>{
+        const s = STATE.sessions.find(x=>x.id===el.dataset.id);
+        if(s){ s.status = "cancelled"; await saveState(); render(); }
+      });
     };
   });
 
@@ -741,8 +817,17 @@ function wireStudentDashboard(){
   document.querySelectorAll('[data-action="submit-assignment"]').forEach(el=>{
     el.onclick = async ()=>{
       const a = STATE.assignments.find(x=>x.id===el.dataset.id);
-      a.submissionText = document.getElementById(`asg-answer-${a.id}`).value.trim();
-      a.submissionDocLink = document.getElementById(`asg-answer-doc-${a.id}`).value.trim();
+      if(a.submissionType==="link"){
+        const link = document.getElementById(`asg-answer-doc-${a.id}`).value.trim();
+        if(!link){ showToast("Paste a link first."); return; }
+        a.submissionDocLink = link;
+        a.submissionText = "";
+      }else{
+        const text = document.getElementById(`asg-answer-${a.id}`).value.trim();
+        if(!text){ showToast("Type an answer first."); return; }
+        a.submissionText = text;
+        a.submissionDocLink = "";
+      }
       a.submittedAt = toDateStr(new Date());
       await saveState(); showToast("Submitted."); render();
     };
@@ -758,8 +843,8 @@ function renderParentLogin(){
     <div class="tab-panel lock-screen">
       <div class="display" style="font-size:20px;margin-bottom:6px;">Parent sign in</div>
       <p class="muted" style="margin-bottom:16px;">Type your name and the PIN your tutor gave you.</p>
-      <div class="field" style="text-align:left;"><label>Your name</label>
-        <input id="plogin-name" type="text" placeholder="Your name" autocomplete="off" />
+      <div class="field" style="text-align:center;"><label>Your name</label>
+        <input id="plogin-name" type="text" autocomplete="off" />
       </div>
       <div class="field"><label>Pin</label><input id="plogin-pin" type="password" maxlength="4" /></div>
       <button class="btn btn-primary" id="plogin-submit" style="width:100%;">Sign in</button>
@@ -930,10 +1015,11 @@ function wireParentDashboard(){
     };
   });
   document.querySelectorAll('[data-action="student-cancel"]').forEach(el=>{
-    el.onclick = async ()=>{
-      if(!confirm("Cancel this session?")) return;
-      const s = STATE.sessions.find(x=>x.id===el.dataset.id);
-      if(s){ s.status = "cancelled"; await saveState(); render(); }
+    el.onclick = ()=>{
+      showConfirmModal("Cancel this session?", async ()=>{
+        const s = STATE.sessions.find(x=>x.id===el.dataset.id);
+        if(s){ s.status = "cancelled"; await saveState(); render(); }
+      });
     };
   });
   document.querySelectorAll('[data-action="pick-invoice"]').forEach(el=>{
@@ -1055,7 +1141,7 @@ function sessionCard(s){
     if(student.email){
       const subject = `Reminder: your session with ${tutor.name} — ${fmtDateNice(s.date)}`;
       const body = `Hi ${student.name},\n\nJust a reminder about your upcoming tutoring session:\n\nTutor: ${tutor.name}\nDate: ${fmtDateNice(s.date)}\nTime: ${fmtTimeNice(s.startTime)}\nZoom link: ${link && link.zoomLink ? link.zoomLink : "(none on file)"}\n\nSee you then!\n${STATE.settings.businessName}`;
-      remindBtn = `<a class="btn btn-gold btn-sm" href="${buildMailto(student.email, subject, body)}" target="_blank" rel="noopener">Send reminder</a>`;
+      remindBtn = `<a class="btn btn-gold btn-sm" href="${buildMailto(student.email, subject, body)}">Send reminder</a>`;
     }else{
       remindBtn = `<span class="btn btn-gold btn-sm" style="opacity:.5;cursor:not-allowed;" title="Add an email for this student first">Send reminder</span>`;
     }
@@ -1182,11 +1268,12 @@ function wireTutorsTab(){
     };
   });
   document.querySelectorAll('[data-action="del-tutor"]').forEach(el=>{
-    el.onclick = async ()=>{
-      if(!confirm("Remove this tutor? Students linked to them will keep their history but lose that link.")) return;
-      STATE.tutors = STATE.tutors.filter(t=>t.id!==el.dataset.id);
-      STATE.students.forEach(s=>{ s.tutors = (s.tutors||[]).filter(l=>l.tutorId!==el.dataset.id); });
-      await saveState(); render();
+    el.onclick = ()=>{
+      showConfirmModal("Remove this tutor? Students linked to them will keep their history but lose that link.", async ()=>{
+        STATE.tutors = STATE.tutors.filter(t=>t.id!==el.dataset.id);
+        STATE.students.forEach(s=>{ s.tutors = (s.tutors||[]).filter(l=>l.tutorId!==el.dataset.id); });
+        await saveState(); render();
+      });
     };
   });
   document.querySelectorAll('[data-action="add-avail"]').forEach(el=>{
@@ -1298,32 +1385,43 @@ function renderStudentsTab(){
       </div>
 
       <div class="day-heading">Assignments</div>
-      ${STATE.assignments.filter(a=>a.studentId===s.id).map(a=>{
+      ${sortByDueDate(STATE.assignments.filter(a=>a.studentId===s.id)).map(a=>{
         const submitted = !!a.submittedAt;
+        const status = assignmentStatus(a);
         return `<div class="card" style="background:#FAF8F2;">
           <div class="card-row">
             <div>
               <div style="font-weight:600;">${escapeHtml(a.title)}</div>
-              ${a.instructions ? `<div class="muted" style="font-size:12.5px;margin-top:2px;">${escapeHtml(a.instructions)}</div>` : ""}
-              ${a.docLink ? `<div style="margin-top:4px;"><a href="${escapeHtml(a.docLink)}" target="_blank" rel="noopener">View document</a></div>` : ""}
+              <div class="mono muted" style="font-size:11.5px;margin-top:2px;">${a.dueDate?("Due "+fmtDateNice(a.dueDate)):"No due date"} · ${a.submissionType==="link"?"File link":"Text entry"}</div>
+              ${a.instructions ? `<div class="muted" style="font-size:12.5px;margin-top:4px;">${escapeHtml(a.instructions)}</div>` : ""}
+              ${a.docLink ? `<div style="margin-top:4px;"><a href="${escapeHtml(a.docLink)}" target="_blank" rel="noopener">View reference document</a></div>` : ""}
             </div>
             <button class="icon-btn" data-action="del-assignment" data-id="${a.id}">Remove</button>
           </div>
           <div style="margin-top:10px;">
-            ${submitted ? `
-              <span class="badge completed">Submitted ${fmtDateSlash(a.submittedAt)}</span>
-              ${a.submissionText ? `<p style="margin:8px 0 0;white-space:pre-wrap;font-size:13px;">${escapeHtml(a.submissionText)}</p>` : ""}
-              ${a.submissionDocLink ? `<div style="margin-top:4px;"><a href="${escapeHtml(a.submissionDocLink)}" target="_blank" rel="noopener">Student's document</a></div>` : ""}
-            ` : `<span class="badge upcoming">Not submitted yet</span>`}
+            ${assignmentStatusBadgeHTML(status)}
+            ${submitted ? `<span class="muted" style="margin-left:8px;font-size:12px;">${fmtDateSlash(a.submittedAt)}</span>` : ""}
+            ${submitted && a.submissionType==="text" && a.submissionText ? `<p style="margin:8px 0 0;white-space:pre-wrap;font-size:13px;">${escapeHtml(a.submissionText)}</p>` : ""}
+            ${submitted && a.submissionType==="link" && a.submissionDocLink ? `<div style="margin-top:4px;"><a href="${escapeHtml(a.submissionDocLink)}" target="_blank" rel="noopener">Student's submitted file link</a></div>` : ""}
           </div>
         </div>`;
       }).join("")}
       ${STATE.assignments.filter(a=>a.studentId===s.id).length===0 ? `<p class="muted">No assignments yet.</p>` : ""}
       <div class="form-box" style="background:#FAF8F2;margin-top:10px;margin-bottom:0;">
-        <div class="field"><label>Title</label><input id="asg-title-${s.id}" placeholder="e.g. Chapter 4 practice set"></div>
+        <div class="grid-2">
+          <div class="field"><label>Title</label><input id="asg-title-${s.id}" placeholder="e.g. Chapter 4 practice set"></div>
+          <div class="field"><label>Due date (optional)</label><input type="date" id="asg-due-${s.id}"></div>
+        </div>
         <div class="field"><label>Instructions</label><textarea id="asg-instructions-${s.id}" rows="2" placeholder="What should they do?"></textarea></div>
-        <div class="field" style="margin-bottom:0;"><label>Document link (optional)</label><input id="asg-doclink-${s.id}" placeholder="https://drive.google.com/..."></div>
-        <button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-action="add-assignment" data-id="${s.id}">+ Add assignment</button>
+        <div class="field" style="margin-bottom:0;"><label>Reference document link (optional)</label><input id="asg-doclink-${s.id}" placeholder="https://drive.google.com/..."></div>
+        <div class="field" style="margin-bottom:0;margin-top:14px;">
+          <label>How should the student submit?</label>
+          <div style="display:flex;gap:18px;margin-top:4px;">
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;color:var(--ink);"><input type="radio" name="asg-subtype-${s.id}" value="text" checked style="width:auto;"> Text entry</label>
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;color:var(--ink);"><input type="radio" name="asg-subtype-${s.id}" value="link" style="width:auto;"> File link</label>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:14px;" data-action="add-assignment" data-id="${s.id}">+ Add assignment</button>
       </div>
     </div>`;
   });
@@ -1347,10 +1445,11 @@ function wireStudentsTab(){
     };
   });
   document.querySelectorAll('[data-action="del-student"]').forEach(el=>{
-    el.onclick = async ()=>{
-      if(!confirm("Remove this student?")) return;
-      STATE.students = STATE.students.filter(s=>s.id!==el.dataset.id);
-      await saveState(); render();
+    el.onclick = ()=>{
+      showConfirmModal("Remove this student?", async ()=>{
+        STATE.students = STATE.students.filter(s=>s.id!==el.dataset.id);
+        await saveState(); render();
+      });
     };
   });
   document.querySelectorAll('[data-action="new-pin"]').forEach(el=>{
@@ -1411,16 +1510,20 @@ function wireStudentsTab(){
       if(!title){ showToast("Give the assignment a title first."); return; }
       const instructions = document.getElementById(`asg-instructions-${sid}`).value.trim();
       const docLink = document.getElementById(`asg-doclink-${sid}`).value.trim();
-      STATE.assignments.push({ id: uid("asg"), studentId: sid, title, instructions, docLink,
+      const dueDate = document.getElementById(`asg-due-${sid}`).value;
+      const subtypeEl = document.querySelector(`input[name="asg-subtype-${sid}"]:checked`);
+      const submissionType = subtypeEl ? subtypeEl.value : "text";
+      STATE.assignments.push({ id: uid("asg"), studentId: sid, title, instructions, docLink, dueDate, submissionType,
         createdAt: toDateStr(new Date()), submissionText: "", submissionDocLink: "", submittedAt: "" });
       await saveState(); showToast("Assignment added."); render();
     };
   });
   document.querySelectorAll('[data-action="del-assignment"]').forEach(el=>{
-    el.onclick = async ()=>{
-      if(!confirm("Remove this assignment?")) return;
-      STATE.assignments = STATE.assignments.filter(a=>a.id!==el.dataset.id);
-      await saveState(); render();
+    el.onclick = ()=>{
+      showConfirmModal("Remove this assignment?", async ()=>{
+        STATE.assignments = STATE.assignments.filter(a=>a.id!==el.dataset.id);
+        await saveState(); render();
+      });
     };
   });
 }
@@ -1478,10 +1581,11 @@ function wireParentAccountsTab(){
     await saveState(); showToast("Parent added — now link a student below."); render();
   };
   document.querySelectorAll('[data-action="del-parent"]').forEach(el=>{
-    el.onclick = async ()=>{
-      if(!confirm("Remove this parent account?")) return;
-      STATE.parents = STATE.parents.filter(p=>p.id!==el.dataset.id);
-      await saveState(); render();
+    el.onclick = ()=>{
+      showConfirmModal("Remove this parent account?", async ()=>{
+        STATE.parents = STATE.parents.filter(p=>p.id!==el.dataset.id);
+        await saveState(); render();
+      });
     };
   });
   document.querySelectorAll('[data-action="new-parent-pin"]').forEach(el=>{
@@ -1582,7 +1686,7 @@ function renderInvoicesTab(){
       if(student.billingEmail){
         const subject = `Invoice ${saved?("#"+saved.number+" \u2014 "):""}${monthLabel}`;
         const body = `Hi ${billName},\n\nHere's your tutoring invoice for ${monthLabel}${tutorNames?(" with "+tutorNames):""}.\n\nTotal due: $${total.toFixed(2)}\nTerms: ${STATE.settings.terms}\n\nA copy of the full invoice is attached as a PDF \u2014 print it from this page and save as PDF to attach.\n\nThanks!\n${STATE.settings.businessName}`;
-        emailBtnHTML = `<a class="btn btn-gold btn-sm" href="${buildMailto(student.billingEmail, subject, body)}" target="_blank" rel="noopener">Email invoice</a>`;
+        emailBtnHTML = `<a class="btn btn-gold btn-sm" href="${buildMailto(student.billingEmail, subject, body)}">Email invoice</a>`;
       }else{
         emailBtnHTML = `<span class="btn btn-gold btn-sm" style="opacity:.5;cursor:not-allowed;" title="Add a billing email for this student first">Email invoice</span>`;
       }
@@ -1691,13 +1795,14 @@ function wireInvoicesTab(){
     };
   });
   document.querySelectorAll('[data-action="regenerate-invoice"]').forEach(el=>{
-    el.onclick = async ()=>{
-      if(!confirm("Overwrite the saved invoice with a fresh calculation from current sessions?")) return;
-      const existing = STATE.invoices.find(iv=>iv.studentId===invoiceSel.studentId && iv.month===invoiceSel.month);
-      existing.tutorBlocks = computeCombinedInvoiceBlocks(invoiceSel.studentId, invoiceSel.month);
-      existing.total = existing.tutorBlocks.reduce((sum,b)=>sum+b.subtotal,0);
-      existing.generatedAt = toDateStr(new Date());
-      await saveState(); showToast("Invoice updated."); render();
+    el.onclick = ()=>{
+      showConfirmModal("Overwrite the saved invoice with a fresh calculation from current sessions?", async ()=>{
+        const existing = STATE.invoices.find(iv=>iv.studentId===invoiceSel.studentId && iv.month===invoiceSel.month);
+        existing.tutorBlocks = computeCombinedInvoiceBlocks(invoiceSel.studentId, invoiceSel.month);
+        existing.total = existing.tutorBlocks.reduce((sum,b)=>sum+b.subtotal,0);
+        existing.generatedAt = toDateStr(new Date());
+        await saveState(); showToast("Invoice updated."); render();
+      });
     };
   });
   document.querySelectorAll('[data-action="view-invoice"]').forEach(el=>{
@@ -1735,10 +1840,11 @@ function wireSettingsTab(){
     STATE.settings.nextInvoiceNumber = parseInt(document.getElementById("set-nextnum").value) || STATE.settings.nextInvoiceNumber;
     await saveState(); showToast("Saved.");
   };
-  document.getElementById("reset-all").onclick = async ()=>{
-    if(!confirm("This deletes everything for everyone using this portal. Are you sure?")) return;
-    STATE = defaultState();
-    await saveState(); showToast("All data cleared."); render();
+  document.getElementById("reset-all").onclick = ()=>{
+    showConfirmModal("This deletes everything for everyone using this portal. Are you sure?", async ()=>{
+      STATE = defaultState();
+      await saveState(); showToast("All data cleared."); render();
+    });
   };
 }
 
