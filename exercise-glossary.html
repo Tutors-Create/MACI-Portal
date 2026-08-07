@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#14171c">
+<title>Exercise Glossary</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root{
+  --bg:#14171c;
+  --bg-card:#1b2027;
+  --bg-raised:#20262e;
+  --line:#2c333c;
+  --text:#eef1f0;
+  --text-dim:#8b95a1;
+  --text-faint:#5a6470;
+  --accent:#f4c430;
+
+  --cat-warmup:#5b7c99;
+  --cat-warmup-bg:rgba(91,124,153,.20);
+  --cat-lift:#f4c430;
+  --cat-lift-bg:rgba(244,196,48,.16);
+  --cat-core:#7c9473;
+  --cat-core-bg:rgba(124,148,115,.20);
+  --cat-stretch:#a586d9;
+  --cat-stretch-bg:rgba(165,134,217,.20);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html{background:var(--bg);min-height:100%;}
+html,body{overflow-x:hidden;width:100%;}
+body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;-webkit-text-size-adjust:100%;min-height:100vh;min-height:100dvh;}
+.wrap{max-width:600px;margin:0 auto;padding:calc(16px + env(safe-area-inset-top)) 14px calc(32px + env(safe-area-inset-bottom));}
+
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:clamp(11px,3.2vw,12px);letter-spacing:.14em;color:var(--accent);text-transform:uppercase;margin:0 0 6px;}
+h1{font-family:'Oswald',sans-serif;font-weight:700;font-size:clamp(24px,9vw,34px);text-transform:uppercase;letter-spacing:.01em;margin:0 0 4px;line-height:1.05;color:var(--text);}
+.sub{color:var(--text-dim);font-size:clamp(13.5px,3.8vw,15px);line-height:1.45;margin:0;}
+.header-card{background:var(--bg-card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px;}
+
+/* sticky search + filter */
+.sticky-bar{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:8px;margin:0 -14px 14px;padding-left:14px;padding-right:14px;padding-bottom:10px;border-bottom:1px solid var(--line);}
+.search-wrap{position:relative;margin-bottom:10px;}
+.search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text-faint);font-size:16px;pointer-events:none;}
+#search{width:100%;background:var(--bg-card);border:1px solid var(--line);border-radius:10px;padding:13px 14px 13px 38px;font-family:'Inter',sans-serif;font-size:clamp(14px,3.8vw,16px);color:var(--text);outline:none;-webkit-appearance:none;appearance:none;}
+#search::placeholder{color:var(--text-faint);}
+#search:focus{border-color:var(--accent);}
+#search::-webkit-search-cancel-button{-webkit-appearance:none;height:16px;width:16px;background:var(--text-faint);border-radius:50%;cursor:pointer;
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M18.3 5.71L12 12.01l-6.3-6.3-1.41 1.41L10.59 13.4l-6.3 6.3 1.41 1.41L12 14.83l6.3 6.3 1.41-1.41-6.3-6.3 6.3-6.3z'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M18.3 5.71L12 12.01l-6.3-6.3-1.41 1.41L10.59 13.4l-6.3 6.3 1.41 1.41L12 14.83l6.3 6.3 1.41-1.41-6.3-6.3 6.3-6.3z'/%3E%3C/svg%3E");}
+
+.filter-row{display:flex;gap:8px;flex-wrap:wrap;}
+.chip{font-family:'JetBrains Mono',monospace;font-size:clamp(11.5px,3.2vw,13px);font-weight:700;letter-spacing:.03em;padding:8px 13px;border-radius:999px;border:1.5px solid var(--line);background:var(--bg-card);color:var(--text-dim);cursor:pointer;transition:transform .1s ease,opacity .1s ease;-webkit-tap-highlight-color:transparent;}
+.chip:active{transform:scale(0.95);}
+.chip.all.active{background:var(--text);border-color:var(--text);color:var(--bg);}
+.chip.cat-warmup.active{background:var(--cat-warmup-bg);border-color:var(--cat-warmup);color:var(--cat-warmup);}
+.chip.cat-lift.active{background:var(--cat-lift-bg);border-color:var(--cat-lift);color:var(--cat-lift);}
+.chip.cat-core.active{background:var(--cat-core-bg);border-color:var(--cat-core);color:var(--cat-core);}
+.chip.cat-stretch.active{background:var(--cat-stretch-bg);border-color:var(--cat-stretch);color:var(--cat-stretch);}
+
+.results-meta{font-family:'JetBrains Mono',monospace;font-size:clamp(11px,3vw,12px);color:var(--text-faint);letter-spacing:.05em;text-transform:uppercase;margin:0 2px 12px;}
+
+/* exercise cards */
+.ex-card{background:var(--bg-card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px;}
+.ex-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;}
+.ex-card-name{font-family:'Oswald',sans-serif;font-weight:600;font-size:clamp(16px,4.6vw,18px);text-transform:uppercase;letter-spacing:.01em;line-height:1.25;margin:0;color:var(--text);}
+.ex-card-name mark{background:transparent;color:var(--accent);}
+.ex-card-tags{display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0;justify-content:flex-end;}
+.tag{font-family:'JetBrains Mono',monospace;font-size:clamp(9.5px,2.6vw,10.5px);font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:5px;white-space:nowrap;}
+.tag.cat-warmup{background:var(--cat-warmup-bg);color:var(--cat-warmup);}
+.tag.cat-lift{background:var(--cat-lift-bg);color:var(--cat-lift);}
+.tag.cat-core{background:var(--cat-core-bg);color:var(--cat-core);}
+.tag.cat-stretch{background:var(--cat-stretch-bg);color:var(--cat-stretch);}
+.ex-card-desc{color:var(--text-dim);font-size:clamp(13px,3.6vw,14.5px);line-height:1.55;margin:0;}
+
+.empty-state{text-align:center;color:var(--text-faint);font-size:clamp(13.5px,3.8vw,15px);padding:40px 16px;line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header-card">
+    <div class="eyebrow">8-Week Upper Body Program</div>
+    <h1>Exercise Glossary</h1>
+    <p class="sub">Every exercise, alphabetized — search by name or filter by type.</p>
+  </div>
+
+  <div class="sticky-bar">
+    <div class="search-wrap">
+      <span class="search-icon">⌕</span>
+      <input type="search" id="search" placeholder="Search exercises…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    </div>
+    <div class="filter-row" id="filter-row">
+      <button class="chip all active" data-cat="ALL">All</button>
+      <button class="chip cat-warmup" data-cat="WARM-UP">Warm-Up</button>
+      <button class="chip cat-lift" data-cat="LIFT">Lift</button>
+      <button class="chip cat-core" data-cat="CORE">Core</button>
+      <button class="chip cat-stretch" data-cat="STRETCH">Stretch</button>
+    </div>
+  </div>
+
+  <div class="results-meta" id="results-meta"></div>
+  <div id="list"></div>
+  <div class="empty-state" id="empty-state" hidden>No exercises match your search.</div>
+</div>
+
+<script>
+const EXERCISES = [{"name":"Ab Wheel Rollout","cats":["CORE"],"desc":"Kneel holding the wheel handles. Roll forward slowly, keeping your core braced and lower back from sagging, until you reach the point just before you'd lose control. Roll back to start using your abs, not your arms."},{"name":"Arm Circles","cats":["WARM-UP"],"desc":"Stand with arms out to your sides at shoulder height. Make small circles forward for 15-30s, then reverse direction. Gradually increase circle size."},{"name":"Arm Swings","cats":["WARM-UP"],"desc":"Stand tall and swing both arms forward and up overhead, then back down and behind you, like a controlled windmill. Keep the motion smooth, not jerky."},{"name":"Arnold Press","cats":["LIFT"],"desc":"Sit or stand holding dumbbells in front of your shoulders, palms facing you. As you press overhead, rotate your palms to face forward. Reverse the rotation as you lower back down."},{"name":"Assisted Pull-Up","cats":["LIFT"],"desc":"Use an assisted pull-up machine (knee pad supports part of your bodyweight) or loop a resistance band under your knee/foot and over the pull-up bar. Pull your chin over the bar, then lower under control."},{"name":"Band Pull-Apart","cats":["LIFT","WARM-UP"],"desc":"Hold a resistance band with both hands, arms straight out in front at shoulder height. Pull the band apart by driving your shoulder blades together, then return slowly. Great as a warm-up or standalone rear-delt move."},{"name":"Band Seated Row","cats":["LIFT"],"desc":"Sit on the floor with legs extended, band looped around your feet. Pull the handles toward your torso, keeping your back straight and squeezing your shoulder blades together, then extend arms back out."},{"name":"Band Standing Chest Press","cats":["LIFT"],"desc":"Anchor a band behind you at chest height (around a pole, door anchor, or heavy furniture). Facing away from the anchor, press the handles forward until arms are extended, then return slowly."},{"name":"Barbell or Dumbbell Bench Press","cats":["LIFT"],"desc":"Lie on a flat bench, feet flat on the floor. Lower the bar or dumbbells to chest level with elbows at roughly a 45° angle from your body, then press up until arms are extended without locking out hard."},{"name":"Bicep Curl (Dumbbell or Barbell)","cats":["LIFT"],"desc":"Stand holding weight(s) at your sides, palms facing forward. Curl the weight up toward your shoulders by bending at the elbow only — no swinging the torso. Lower slowly."},{"name":"Biceps Stretch","cats":["STRETCH"],"desc":"Extend one arm out to the side, palm facing forward, fingers pointing back. Gently rotate your torso away from that arm until you feel a stretch through the front of the upper arm. Hold, then switch sides."},{"name":"Bicycle Crunch","cats":["CORE"],"desc":"Lie on your back, hands behind your head, knees bent. Bring one elbow toward the opposite knee while extending the other leg, then switch sides in a pedaling motion."},{"name":"Bodyweight Good Mornings","cats":["WARM-UP"],"desc":"Stand with hands behind your head or crossed over your chest. Hinge forward at the hips, keeping your back flat and knees slightly bent, until your torso is near parallel to the floor, then return to standing."},{"name":"Bodyweight Squats","cats":["WARM-UP"],"desc":"Stand feet shoulder-width apart. Sit your hips back and down as if sitting in a chair, keeping your chest up, until thighs are roughly parallel to the floor. Drive back up through your heels."},{"name":"Cable Crunch","cats":["CORE"],"desc":"Kneel in front of a cable stack with a rope attachment, holding the rope by your head or shoulders. Crunch down, bringing your elbows toward your knees using your abs (not your arms), then rise back up under control."},{"name":"Cable or Dumbbell Chest Fly","cats":["LIFT"],"desc":"Lie on a bench (or stand at a cable station) with arms extended above your chest, slight bend in the elbows. Lower the weight out to the sides in a wide arc until you feel a chest stretch, then bring back together."},{"name":"Calf Stretch","cats":["STRETCH"],"desc":"Place hands on a wall, one leg back with heel pressed to the floor and knee straight. Lean forward until you feel a stretch in the back of the lower leg. Hold, then switch legs."},{"name":"Cat-Cow","cats":["WARM-UP","STRETCH"],"desc":"On hands and knees, alternate between arching your back and dropping your belly (cow) and rounding your spine toward the ceiling, tucking your chin (cat). Move slowly with your breath."},{"name":"Chest Doorway Stretch","cats":["STRETCH"],"desc":"Stand in a doorway with forearm braced against the frame, elbow at shoulder height. Step forward slightly through the doorway until you feel a stretch across your chest. Hold, then switch sides."},{"name":"Child's Pose","cats":["STRETCH"],"desc":"Kneel and sit back onto your heels, then fold forward extending your arms in front of you, forehead toward the floor. Relax your lower back and breathe."},{"name":"Close-Grip Bench Press / Pushdown","cats":["LIFT"],"desc":"Close-grip bench: same setup as bench press, but hands just inside shoulder width to shift emphasis onto triceps. If using a pushdown instead, see Triceps Pushdown."},{"name":"Crunches","cats":["CORE"],"desc":"Lie on your back, knees bent, feet flat. Hands lightly behind your head or crossed on your chest. Curl your shoulders off the floor using your abs, then lower with control."},{"name":"Curl 21s","cats":["LIFT"],"desc":"A biceps burnout technique done with a barbell or dumbbells: perform 7 reps through only the bottom half of the curl's range, then 7 reps through only the top half, then 7 full-range reps — 21 reps total without resting between segments."},{"name":"Dips","cats":["LIFT"],"desc":"Using parallel bars or a bench, support your body on straight arms. Lower yourself by bending your elbows until upper arms are roughly parallel to the floor, then press back up. Lean forward slightly to emphasize chest."},{"name":"Dumbbell Bent-Over Row","cats":["LIFT"],"desc":"Hinge forward at the hips with a flat back, holding dumbbells hanging below your shoulders. Pull both weights up toward your ribs, squeezing your shoulder blades together, then lower slowly."},{"name":"Dumbbell Floor Press","cats":["LIFT"],"desc":"Lie on the floor with knees bent, feet flat, holding a dumbbell in each hand at chest level with upper arms resting on the floor. Press the dumbbells straight up over your chest until arms are extended, then lower until your upper arms touch the floor again."},{"name":"Dumbbell Shoulder Press","cats":["LIFT"],"desc":"Sit or stand holding dumbbells at shoulder height, palms facing forward. Press the dumbbells straight overhead until arms are extended, then lower back to shoulder height under control, keeping your core braced. Same movement as the Overhead Press below."},{"name":"Face Pull (Band or Cable)","cats":["LIFT"],"desc":"Anchor a band or cable at roughly eye height. Pull the handles toward your face, leading with your elbows and finishing with your hands beside your ears, squeezing your shoulder blades together."},{"name":"Front Raise","cats":["LIFT"],"desc":"Hold a dumbbell in each hand in front of your thighs. Raise both arms straight out in front to shoulder height, keeping a slight bend in the elbow, then lower slowly."},{"name":"Hammer Curl","cats":["LIFT"],"desc":"Same as a bicep curl, but hold the dumbbells with palms facing each other (neutral grip) throughout the movement rather than facing forward."},{"name":"Hamstring Stretch","cats":["STRETCH"],"desc":"Sit or stand and extend one leg out, gently hinging forward from the hips with a flat back until you feel a stretch behind the thigh. Hold, then switch legs."},{"name":"Hanging Knee Raise","cats":["CORE"],"desc":"Hang from a pull-up bar with arms straight. Raise your knees up toward your chest by curling your pelvis, then lower with control. Avoid swinging."},{"name":"Hanging Leg Raise","cats":["CORE"],"desc":"Same setup as the knee raise, but keep your legs straight, raising them until roughly parallel to the floor (or higher as you progress). For the twist variation, rotate your hips slightly to one side at the top, alternating sides."},{"name":"Hip Circles","cats":["WARM-UP"],"desc":"Stand with hands on hips. Rotate your hips in a large circle, like a hula-hoop motion, for several reps, then reverse direction."},{"name":"Hip Flexor Lunge Stretch","cats":["STRETCH"],"desc":"Kneel in a lunge position, back knee on the floor. Shift your hips forward gently until you feel a stretch at the front of the back hip. Keep your torso upright. Hold, then switch sides."},{"name":"Incline Dumbbell Press","cats":["LIFT"],"desc":"On an incline bench (30-45°), press dumbbells from shoulder level straight up until arms are extended, then lower under control. Targets the upper chest more than a flat press."},{"name":"IT Band Stretch","cats":["STRETCH"],"desc":"Cross one leg behind the other and lean your torso to the side, away from the back leg, until you feel a stretch along the outside of that hip and thigh. Hold, then switch sides."},{"name":"Jumping Jacks","cats":["WARM-UP"],"desc":"Stand with feet together, arms at sides. Jump feet out wide while raising arms overhead, then jump back to start. Repeat at a steady pace."},{"name":"Lat Pulldown","cats":["LIFT"],"desc":"Sit at a lat pulldown machine, grip the bar wider than shoulder width. Pull the bar down to upper chest level, driving your elbows down and back, then let it rise back under control."},{"name":"Lat Stretch","cats":["STRETCH"],"desc":"Reach one arm overhead and lean your torso to the opposite side, or hold onto a bar overhead and let your body hang slightly to the side, until you feel a stretch along the side of your back. Hold, then switch sides."},{"name":"Lateral Raise (Dumbbell or Cable)","cats":["LIFT"],"desc":"Hold weight(s) at your sides. Raise both arms out to shoulder height, leading with your elbows, palms facing down, then lower slowly. Keep a slight bend in the elbows throughout."},{"name":"Leg Press","cats":["LIFT"],"desc":"Sit in the leg press machine with feet shoulder-width on the platform. Lower the platform by bending your knees toward your chest, then press back up without locking your knees out hard."},{"name":"Leg Raises","cats":["CORE"],"desc":"Lie on your back, hands under your lower back or at your sides. Keeping legs straight, raise them to vertical, then lower slowly without letting your lower back arch off the floor."},{"name":"Neck Rolls","cats":["WARM-UP","STRETCH"],"desc":"Slowly drop your ear toward one shoulder, then roll your chin down and across to the other shoulder in a smooth arc. Keep the motion gentle and slow."},{"name":"Overhead Press (Dumbbell or Barbell)","cats":["LIFT"],"desc":"Standing or seated, hold the weight at shoulder height. Press straight overhead until arms are extended, then lower back to shoulder height under control. Keep your core braced to avoid arching your lower back."},{"name":"Overhead Triceps Extension","cats":["LIFT"],"desc":"Hold one dumbbell with both hands overhead. Lower it behind your head by bending your elbows, keeping your upper arms still, then extend back to the top."},{"name":"Plank","cats":["CORE"],"desc":"Support your body on forearms and toes, elbows under shoulders, body in a straight line from head to heels. Brace your core and hold, avoiding sagging hips or a piked-up butt."},{"name":"Pull-Up","cats":["LIFT"],"desc":"Hang from a bar with an overhand grip, hands slightly wider than shoulders. Pull your chin over the bar by driving your elbows down, then lower with control until arms are fully extended."},{"name":"Push-Up","cats":["LIFT"],"desc":"Start in a plank position, hands slightly wider than shoulders. Lower your chest toward the floor keeping your body in a straight line, then press back up. Drop to your knees to reduce difficulty, or elevate your feet / add weight to increase it."},{"name":"Quad Stretch","cats":["STRETCH"],"desc":"Standing on one leg, bend the other knee and grab that foot behind you, pulling your heel toward your glutes. Keep your knees close together and hold onto something for balance if needed. Hold, then switch legs."},{"name":"Rear Delt Stretch","cats":["STRETCH"],"desc":"Bring one arm across your body at shoulder height. Use your other arm to gently pull it closer to your chest until you feel a stretch in the back of the shoulder. Hold, then switch sides."},{"name":"Russian Twist","cats":["CORE"],"desc":"Sit with knees bent, leaning back slightly to engage your core, feet on the floor or lifted for more difficulty. Rotate your torso side to side, tapping the floor beside your hip each time."},{"name":"Seated Cable Row","cats":["LIFT"],"desc":"Sit at a cable row station, feet braced, knees slightly bent. Pull the handle toward your torso, keeping your back straight and elbows close to your body, then let it extend back out under control."},{"name":"Shoulder Rolls","cats":["WARM-UP"],"desc":"Roll your shoulders in a smooth circle — up, back, and down — for several reps, then reverse direction."},{"name":"Shoulder Stretch (Cross-Body)","cats":["STRETCH"],"desc":"Bring one arm straight across your chest at shoulder height. Use your other arm to gently press it closer to your body until you feel a stretch across the back of the shoulder. Hold, then switch sides."},{"name":"Side Plank","cats":["CORE"],"desc":"Lie on your side, propped up on one forearm with elbow under your shoulder. Stack your feet and lift your hips so your body forms a straight line. Hold, then switch sides."},{"name":"Squat (Bodyweight, Dumbbell, or Barbell)","cats":["LIFT"],"desc":"Feet shoulder-width apart, weight (if any) held at your chest or on your back. Sit your hips back and down, chest up, until thighs are roughly parallel to the floor, then drive back up through your heels."},{"name":"Superman","cats":["CORE"],"desc":"Lie face down, arms extended overhead. Simultaneously lift your arms, chest, and legs slightly off the floor, squeezing your lower back and glutes, then lower with control."},{"name":"Torso Twists","cats":["WARM-UP"],"desc":"Stand with feet shoulder-width apart, arms relaxed or bent at 90°. Rotate your torso side to side at a controlled pace, letting your arms swing naturally."},{"name":"Triceps Kickback (Dumbbell)","cats":["LIFT"],"desc":"Hinge forward at the hips, upper arm held close to your body and parallel to the floor. Extend your forearm straight back until your arm is fully extended, then bend back to start."},{"name":"Triceps Pushdown (Cable or Band)","cats":["LIFT"],"desc":"Anchor a cable or band overhead. Starting with elbows bent at your sides, press the handles/band straight down until arms are extended, keeping elbows tucked in, then return under control. Using a rope attachment instead of a straight bar (sometimes called a Rope Pushdown) lets your hands split apart at the bottom for a different grip angle — same movement otherwise."},{"name":"Triceps Stretch (Overhead)","cats":["STRETCH"],"desc":"Raise one arm overhead and bend the elbow so your hand drops behind your head. Use your other hand to gently press the elbow back, feeling a stretch along the back of the upper arm. Hold, then switch sides."},{"name":"Upper-Back Doorframe Stretch","cats":["STRETCH"],"desc":"Hold a doorframe or sturdy post with both hands at chest height. Round your upper back and sit your hips back, letting your shoulder blades spread apart, until you feel a stretch between them."}];
+
+const CAT_META = {
+  'WARM-UP': { label: 'Warm-Up', cls: 'cat-warmup' },
+  'LIFT':    { label: 'Lift',    cls: 'cat-lift' },
+  'CORE':    { label: 'Core',    cls: 'cat-core' },
+  'STRETCH': { label: 'Stretch', cls: 'cat-stretch' }
+};
+
+let query = '';
+let activeCats = new Set(); // empty = "All"
+
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeRegExp(s){
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function highlight(name, q){
+  const safe = escapeHtml(name);
+  if(!q) return safe;
+  const re = new RegExp('(' + escapeRegExp(escapeHtml(q)) + ')', 'ig');
+  return safe.replace(re, '<mark>$1</mark>');
+}
+
+function matches(ex){
+  if(activeCats.size > 0 && !ex.cats.some(c => activeCats.has(c))) return false;
+  if(!query) return true;
+  const q = query.toLowerCase();
+  return ex.name.toLowerCase().includes(q) || ex.desc.toLowerCase().includes(q);
+}
+
+function render(){
+  const list = document.getElementById('list');
+  const meta = document.getElementById('results-meta');
+  const empty = document.getElementById('empty-state');
+  const filtered = EXERCISES.filter(matches);
+
+  meta.textContent = `${filtered.length} of ${EXERCISES.length} exercises`;
+
+  if(filtered.length === 0){
+    list.innerHTML = '';
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+
+  list.innerHTML = filtered.map(ex => {
+    const tags = ex.cats.map(c => `<span class="tag ${CAT_META[c].cls}">${CAT_META[c].label}</span>`).join('');
+    return `<div class="ex-card">
+      <div class="ex-card-head">
+        <h3 class="ex-card-name">${highlight(ex.name, query)}</h3>
+        <div class="ex-card-tags">${tags}</div>
+      </div>
+      <p class="ex-card-desc">${escapeHtml(ex.desc)}</p>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('search').addEventListener('input', (e) => {
+  query = e.target.value.trim();
+  render();
+});
+
+document.getElementById('filter-row').addEventListener('click', (e) => {
+  const btn = e.target.closest('.chip');
+  if(!btn) return;
+  const cat = btn.dataset.cat;
+  if(cat === 'ALL'){
+    activeCats.clear();
+  } else {
+    if(activeCats.has(cat)) activeCats.delete(cat);
+    else activeCats.add(cat);
+  }
+  document.querySelectorAll('.chip').forEach(chip => {
+    if(chip.dataset.cat === 'ALL'){
+      chip.classList.toggle('active', activeCats.size === 0);
+    } else {
+      chip.classList.toggle('active', activeCats.has(chip.dataset.cat));
+    }
+  });
+  render();
+});
+
+render();
+</script>
+</body>
+</html>
