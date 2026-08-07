@@ -112,7 +112,23 @@ button:active{transform:translateY(1px);opacity:.85;}
 <body>
 <div class="wrap" id="app">Loading…</div>
 
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+/* ============================= FIREBASE (shared live storage) ============================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyBQFQKFQXyqRH3BDyQgtpsmyKhVofT7iPU",
+  authDomain: "mja-tutoring-maci-portal.firebaseapp.com",
+  projectId: "mja-tutoring-maci-portal",
+  storageBucket: "mja-tutoring-maci-portal.firebasestorage.app",
+  messagingSenderId: "117284366966",
+  appId: "1:117284366966:web:e98833ddf5f32812b48d57"
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+const stateDocRef = doc(db, "lift-log", "shared-state");
+
 /* ===================== DATA ===================== */
 // Each exercise string: "Name — sets x reps/time — note"
 function D(type,title,duration,warmup,main,core,stretch){
@@ -323,31 +339,45 @@ for(let phase=0; phase<4; phase++){
 const TOTAL = PLAN.length; // 56
 
 /* ===================== STATE ===================== */
-const STORAGE_KEY = 'lift-log-plan-progress';
 let dayStatus = new Array(TOTAL).fill('pending'); // 'pending'|'done'|'skipped'
 let pointer = 0; // index of next workout due
 let viewIndex = 0; // index currently displayed (preview vs pointer)
 let loaded = false;
 
-async function loadState(){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw){
-      const parsed = JSON.parse(raw);
+function startStateSync(){
+  onSnapshot(stateDocRef, async (snap)=>{
+    if(snap.metadata.hasPendingWrites) return; // echo of our own not-yet-confirmed write; already rendered locally
+    const wasAtPointer = viewIndex===pointer;
+    if(!snap.exists()){
+      if(!loaded){ viewIndex = Math.min(pointer, TOTAL-1); }
+      loaded = true;
+      render();
+      try{ await setDoc(stateDocRef, { json: JSON.stringify({dayStatus, pointer}) }); }catch(e){ /* first client to arrive creates it; ignore races */ }
+      return;
+    }
+    try{
+      const parsed = JSON.parse(snap.data().json);
       if(Array.isArray(parsed.dayStatus) && parsed.dayStatus.length===TOTAL){
         dayStatus = parsed.dayStatus;
       }
       if(typeof parsed.pointer==='number') pointer = parsed.pointer;
+    }catch(e){ /* ignore malformed remote data */ }
+    if(!loaded || wasAtPointer){ viewIndex = Math.min(pointer, TOTAL-1); }
+    loaded = true;
+    render();
+  }, (err)=>{
+    console.error("Firestore sync error", err);
+    if(!loaded){
+      loaded = true;
+      viewIndex = Math.min(pointer, TOTAL-1);
+      render();
     }
-  }catch(e){ /* no saved state yet */ }
-  viewIndex = Math.min(pointer, TOTAL-1);
-  loaded = true;
-  render();
+  });
 }
 
 async function saveState(){
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({dayStatus, pointer}));
+    await setDoc(stateDocRef, { json: JSON.stringify({dayStatus, pointer}) });
   }catch(e){ console.error('Could not save progress', e); }
 }
 
@@ -528,7 +558,7 @@ function render(){
   `;
 }
 
-loadState();
+startStateSync();
 </script>
 </body>
 </html>
