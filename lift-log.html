@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#14171c">
+<title>8-Week Lift Log</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root{
+  --bg:#14171c;
+  --bg-card:#1b2027;
+  --bg-raised:#20262e;
+  --line:#2c333c;
+  --text:#eef1f0;
+  --text-dim:#8b95a1;
+  --text-faint:#5a6470;
+  --accent:#f4c430;
+  --accent-dim:#8a7226;
+  --steel:#5b7c99;
+  --steel-dim:#33465499;
+  --done:#7c9473;
+  --skip:#a35a3f;
+  --long:var(--accent);
+  --short:var(--steel);
+  --rest:#5a6470;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html{background:var(--bg);min-height:100%;}
+body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;-webkit-text-size-adjust:100%;min-height:100vh;min-height:100dvh;}
+.wrap{max-width:600px;margin:0 auto;padding:calc(20px + env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom));}
+
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;margin:0 0 6px;}
+h1{font-family:'Oswald',sans-serif;font-weight:700;font-size:clamp(26px,8vw,36px);text-transform:uppercase;letter-spacing:.01em;margin:0 0 4px;line-height:1.05;color:var(--text);}
+.sub{color:var(--text-dim);font-size:14px;line-height:1.4;margin:0 0 20px;}
+.header-card{background:var(--bg-card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px;}
+
+/* progress track */
+.track-wrap{margin-bottom:22px;}
+.track-label{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);margin-bottom:8px;letter-spacing:.05em;}
+.track{display:flex;gap:3px;background:var(--bg-card);padding:8px;border-radius:8px;border:1px solid var(--line);overflow-x:auto;}
+.week-block{display:flex;gap:2px;flex:1;padding:0 2px;position:relative;min-width:0;}
+.week-block:not(:last-child){border-right:1px solid var(--line);}
+.tick{flex:1;height:30px;min-width:6px;border-radius:3px;background:var(--line);cursor:pointer;transition:transform .12s ease;position:relative;}
+.tick:active{transform:scale(0.9);}
+.tick.done{background:var(--done);}
+.tick.skipped{background:var(--skip);opacity:.55;}
+.tick.pending{background:var(--line);}
+.tick.current{background:var(--accent);box-shadow:0 0 0 2px var(--bg-card),0 0 0 3px var(--accent);}
+.tick.type-rest{opacity:.4;}
+
+/* status strip */
+.status-row{display:flex;gap:14px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);margin-top:8px;}
+.status-row span{display:flex;align-items:center;gap:5px;}
+.dot{width:8px;height:8px;border-radius:2px;display:inline-block;}
+
+/* card */
+.card{background:var(--bg-card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:14px;}
+.card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line);}
+.badge{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:4px 8px;border-radius:4px;margin-bottom:8px;}
+.badge.long{background:var(--accent-dim);color:var(--accent);}
+.badge.short{background:var(--steel-dim);color:var(--steel);}
+.badge.rest{background:#2c333c;color:var(--text-dim);}
+.day-title{font-family:'Oswald',sans-serif;font-weight:600;font-size:21px;text-transform:uppercase;margin:0;letter-spacing:.01em;line-height:1.15;}
+.day-meta{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);margin-top:5px;letter-spacing:.03em;}
+.duration{font-family:'JetBrains Mono',monospace;font-size:17px;color:var(--text);white-space:nowrap;text-align:right;flex-shrink:0;}
+.duration small{display:block;font-size:9.5px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;}
+
+.section{margin-bottom:20px;}
+.section:last-child{margin-bottom:0;}
+.section-label{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint);margin-bottom:10px;}
+.section-label.stretch{color:var(--steel);}
+ul.ex-list{list-style:none;margin:0;padding:0;}
+ul.ex-list li{display:flex;flex-direction:column;gap:4px;padding:12px 0;border-bottom:1px solid var(--line);}
+ul.ex-list li:last-child{border-bottom:none;}
+.ex-name{font-weight:600;color:var(--text);font-size:15.5px;line-height:1.3;}
+.ex-detail{color:var(--text-dim);font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.5;}
+.run-note{background:var(--bg-raised);border-left:3px solid var(--steel);padding:12px 14px;font-size:13.5px;line-height:1.4;color:var(--text-dim);border-radius:0 8px 8px 0;margin-bottom:18px;}
+
+.actions{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;}
+button{font-family:'Inter',sans-serif;font-weight:600;font-size:14px;border:none;border-radius:9px;padding:14px 18px;min-height:48px;cursor:pointer;letter-spacing:.02em;transition:opacity .15s;-webkit-tap-highlight-color:transparent;}
+button:hover{opacity:.85;}
+button:active{transform:translateY(1px);opacity:.85;}
+.btn-complete{background:var(--accent);color:#14171c;flex:1;min-width:140px;}
+.btn-skip{background:transparent;color:var(--text-dim);border:1px solid var(--line);}
+.btn-nav{background:var(--bg-raised);color:var(--text);border:1px solid var(--line);padding:12px 16px;min-height:46px;flex:1;}
+.btn-jump{background:var(--steel);color:#0e1216;}
+.btn-danger{background:var(--skip);color:#fff;flex:1;min-width:140px;}
+
+.preview-banner{display:flex;flex-direction:column;align-items:stretch;gap:10px;background:var(--bg-raised);border:1px dashed var(--steel);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13.5px;line-height:1.4;color:var(--text-dim);}
+.preview-banner b{color:var(--text);}
+.preview-banner button{width:100%;}
+
+.done-banner{display:flex;align-items:center;gap:10px;background:var(--bg-raised);border-left:3px solid var(--done);padding:12px 14px;margin-bottom:16px;border-radius:0 8px 8px 0;font-size:13.5px;color:var(--text-dim);}
+.skip-banner{display:flex;align-items:center;gap:10px;background:var(--bg-raised);border-left:3px solid var(--skip);padding:12px 14px;margin-bottom:16px;border-radius:0 8px 8px 0;font-size:13.5px;color:var(--text-dim);}
+
+.finish{text-align:center;padding:36px 16px;}
+.finish h2{font-family:'Oswald',sans-serif;font-size:28px;text-transform:uppercase;color:var(--accent);margin-bottom:8px;}
+.finish p{font-size:14px;line-height:1.5;}
+
+.footer-nav{display:flex;gap:10px;justify-content:space-between;margin-top:18px;}
+.reset-link{text-align:center;margin-top:26px;padding-bottom:6px;}
+.reset-link a{color:var(--text-faint);font-size:13px;font-family:'JetBrains Mono',monospace;cursor:pointer;text-decoration:underline;padding:8px;display:inline-block;}
+.reset-confirm{background:var(--bg-card);border:1px solid var(--skip);border-radius:12px;padding:16px;margin-top:22px;text-align:center;}
+.reset-confirm p{margin:0 0 12px;font-size:14px;color:var(--text);}
+.reset-confirm .actions{margin-top:0;}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">Loading…</div>
+
+<script>
+/* ===================== DATA ===================== */
+// Each exercise string: "Name — sets x reps/time — note"
+function D(type,title,duration,warmup,main,core,stretch){
+  return {type,title,duration,warmup,main,core,stretch};
+}
+
+// ---- PHASE 1 (Weeks 1-2): dumbbells (10lb & 20lb) + resistance bands ----
+function phase1Week(w){ // w = 1 or 2
+  const pushSets = w===1 ? "3x6-8" : "3x9-11";
+  const floorPressWt = w===1 ? "10lb" : "20lb";
+  const plankT = w===1 ? "3x20s" : "3x30s";
+  const sidePlankT = w===1 ? "2x20s/side" : "2x25s/side";
+  const rowSets = w===1 ? "3x10 @ 20lb" : "3x12 @ 20lb";
+  const bandRowSets = w===1 ? "3x12" : "3x15";
+  const bandPullApart = w===1 ? "2x15" : "2x20";
+  return [
+    D('long','Push Foundation + Core','40 min',
+      ["Arm circles — 30s each direction","Jumping jacks — x30","Shoulder rolls — x10","Bodyweight squats — x10 (leg warm-up)"],
+      [`Push-ups (knee variation OK) — ${pushSets} — go to standard push-ups as soon as you can`,
+       `DB Floor Press — 3x10 @ ${floorPressWt} — lie on floor, press straight up over chest`,
+       `Band Standing Chest Press — 3x12 — anchor band behind you at chest height`,
+       `DB Shoulder Press — 3x8 @ 10lb — seated or standing, core tight`,
+       `DB Lateral Raise — 2x12 @ 10lb — light, controlled, no swinging`],
+      [`Plank — ${plankT}`,"Bicycle crunch — 2x15/side"],
+      ["Doorway chest stretch — 30s","Overhead triceps stretch — 30s/side","Cross-body shoulder stretch — 30s/side","Child's pose — 45s","Cat-cow — x8"]),
+    D('short','Short: Abs + Arms','15-20 min — after your run',
+      ["Arm circles — x10","Torso twists — x10"],
+      [`Push-ups — 2x max effort`, `DB Bicep Curl — 2x10 @ 10lb`,`Band Triceps Pushdown — 2x15 — anchor band overhead`],
+      ["Plank — 2x25s","Leg raises — 2x12","Russian twist — 2x20 total"],
+      ["Hip flexor lunge stretch — 30s/side","Hamstring stretch — 30s/side","Quad stretch — 30s/side","Chest stretch — 30s"]),
+    D('long','Pull Foundation + Core','40 min',
+      ["Arm swings — x15","Hip circles — x10 each way","Bodyweight good mornings — x10"],
+      [`DB Bent-over Row — ${rowSets}`,
+       `Band Seated Row — ${bandRowSets} — loop band around feet, pull to torso`,
+       `Band Face Pull — 3x15 — anchor at eye height, pull to face, elbows high`,
+       `DB Bicep Curl — 3x10 @ 10lb`],
+      [`Side plank — ${sidePlankT}`],
+      ["Lat stretch — 30s/side","Upper-back doorframe stretch — 30s","Biceps stretch — 30s/side","Cat-cow — x8"]),
+    D('short','Short: Push + Core','15-20 min — after your run',
+      ["Arm circles — x10"],
+      ["Push-ups — 2x max effort","DB Shoulder Press — 2x8 @ 10lb",`Band Pull-Apart — ${bandPullApart} — rear delts, keep arms straight`],
+      ["Crunches — 2x15","Superman — 2x12"],
+      ["Chest doorway stretch — 30s","Shoulder cross-body stretch — 30s/side","Hip flexor stretch — 30s/side"]),
+    D('long','Full Upper + Core','45 min',
+      ["Arm circles — x15","Jumping jacks — x30","Shoulder rolls — x10"],
+      ["DB Floor Press — 3x10 @ 20lb","DB Bent-over Row — 3x10 @ 20lb",`Band Face Pull — 3x15`,"DB Bicep Curl — 3x10 @ 10lb","DB Triceps Kickback — 3x10 @ 10lb","Push-ups — 3x max effort"],
+      [`Plank — ${w===1?'3x30s':'3x40s'}`,"Bicycle crunch — 3x15/side"],
+      ["Chest doorway stretch — 30s","Lat stretch — 30s/side","Triceps overhead stretch — 30s/side","Biceps stretch — 30s/side","Child's pose — 45s"]),
+    D('short','Core + Mobility','15 min — long run day',
+      ["Torso twists — x10"],
+      [`Band Pull-Apart — ${bandPullApart} — extra rear-delt/posture work`],
+      ["Leg raises — 3x12","Bicycle crunch — 3x15","Side plank — 2x20s/side","Superman — 2x12"],
+      ["Hamstring stretch — 45s/side","Calf stretch — 30s/side","Hip flexor stretch — 45s/side","Quad stretch — 30s/side","IT band stretch — 30s/side","Child's pose — 1 min"]),
+    D('rest','Rest Day — Full Stretch','15 min',
+      [],[],[],
+      ["Neck rolls — x8 each way","Shoulder stretch — 30s/side","Chest doorway stretch — 30s","Lat stretch — 30s/side","Triceps stretch — 30s/side","Biceps stretch — 30s/side","Hip flexor stretch — 30s/side","Hamstring stretch — 30s/side","Quad stretch — 30s/side","Calf stretch — 30s/side","Child's pose — 1 min"])
+  ];
+}
+
+// ---- PHASE 2 (Weeks 3-4): full gym access begins ----
+function phase2Week(w){
+  const benchSets = w===1 ? "3x8" : "4x8";
+  const plankT = w===1 ? "3x40s" : "3x45s";
+  return [
+    D('long','Chest & Triceps','45 min',
+      ["5 min light cardio","Arm circles — x15","Band pull-aparts or light DB pull-aparts — x15"],
+      [`Barbell or DB Bench Press — ${benchSets} — pick a weight where the last rep is hard but form holds`,
+       "Incline DB Press — 3x10",
+       "Cable or DB Chest Fly — 3x12",
+       "Triceps Rope Pushdown — 3x12",
+       "Push-up burnout — 2x max effort"],
+      ["Hanging Knee Raise — 3x10","Cable Crunch — 3x15"],
+      ["Chest doorway stretch — 30s","Triceps overhead stretch — 30s/side","Lat stretch — 30s/side","Child's pose — 45s"]),
+    D('short','Short: Arms + Abs','20 min — after your run',
+      ["Arm circles — x10"],
+      ["DB Curl — 3x10","Overhead Triceps Extension — 3x10"],
+      [`Plank — ${plankT}`,"Bicycle crunch — 3x20"],
+      ["Biceps stretch — 30s/side","Triceps stretch — 30s/side","Hip flexor stretch — 30s/side","Hamstring stretch — 30s/side"]),
+    D('long','Back & Biceps','45 min',
+      ["Arm swings — x15","Cat-cow — x8","Light rows with empty bar or bands — x12"],
+      ["Lat Pulldown — 3x10","Seated Cable Row — 3x10","Assisted Pull-up or DB Row — 3x8","DB or Barbell Curl — 3x10","Face Pull — 3x12"],
+      ["Russian Twist — 3x20"],
+      ["Lat stretch — 30s/side","Upper-back stretch — 30s","Biceps stretch — 30s/side","Rear delt stretch — 30s/side"]),
+    D('short','Short: Shoulders + Abs','20 min — after your run',
+      ["Arm circles — x10"],
+      ["DB or Barbell Overhead Press — 3x8","Lateral Raise — 3x12"],
+      ["Hanging Leg Raise — 3x10","Plank — 3x45s"],
+      ["Shoulder stretch — 30s/side","Chest stretch — 30s","Triceps stretch — 30s/side"]),
+    D('long','Full Upper + Light Legs','45 min',
+      ["5 min light cardio","Arm circles — x15","Bodyweight squats — x10"],
+      ["Bench Press — 3x8","Cable or DB Row — 3x10","Leg Press — 2x12 (light — maintenance only, don't overdo it before running)"],
+      ["Ab Wheel Rollout or Plank — 3x8-30s"],
+      ["Full upper-body stretch routine — chest, lats, triceps, biceps, shoulders"]),
+    D('short','Core + Mobility','20 min — long run day',
+      ["Torso twists — x10"],
+      [],
+      ["Leg raise — 3x12","Bicycle crunch — 3x15","Side plank — 3x20s/side","Superman — 3x12"],
+      ["Hamstring stretch — 45s/side","Hip flexor stretch — 45s/side","Quad stretch — 30s/side","Calf stretch — 30s/side"]),
+    D('rest','Rest Day — Full Stretch','15 min',[],[],[],
+      ["Full body stretch — neck, shoulders, chest, lats, arms, hips, legs — 30-45s each"])
+  ];
+}
+
+// ---- PHASE 3 (Weeks 5-6): build volume, add supersets ----
+function phase3Week(w){
+  const benchSets = w===1 ? "4x8" : "4x6-8, heavier than last week";
+  const plankT = w===1 ? "3x50s" : "3x55s";
+  return [
+    D('long','Chest & Triceps — Superset','45 min',
+      ["5 min light cardio","Band pull-aparts — x15","Arm circles — x15"],
+      [`Bench Press — ${benchSets}`,
+       "Incline DB Press superset w/ Push-up burnout — 3x10 + max reps, no rest between",
+       "Cable Fly — 3x12",
+       "Dips (assisted if needed) — 3x8",
+       "Triceps Pushdown — 3x12"],
+      ["Hanging Knee Raise — 3x12","Cable Crunch — 3x15",`Plank — ${plankT}`],
+      ["Chest doorway stretch — 30s","Triceps stretch — 30s/side","Lat stretch — 30s/side","Shoulder stretch — 30s/side"]),
+    D('short','Short: Arms + Abs','20 min — after your run',
+      ["Arm circles — x10"],
+      ["DB Curl — 3x10","Hammer Curl — 3x10","Overhead Triceps Extension — 3x10"],
+      ["Plank — 3x50s","Bicycle crunch — 3x20"],
+      ["Biceps stretch — 30s/side","Triceps stretch — 30s/side","Hamstring stretch — 30s/side"]),
+    D('long','Back & Biceps — Superset','45 min',
+      ["Arm swings — x15","Cat-cow — x8"],
+      ["Lat Pulldown — 4x10","Seated Cable Row — 3x12","Pull-up attempt — 3x max","Barbell Curl superset Hammer Curl — 3x10 + 3x10","Face Pull — 3x15"],
+      ["Russian Twist — 3x25"],
+      ["Lat stretch — 30s/side","Upper-back stretch — 30s","Biceps stretch — 30s/side"]),
+    D('short','Short: Shoulders + Abs','20 min — after your run',
+      ["Arm circles — x10"],
+      ["Overhead Press — 3x8","Lateral Raise — 3x12","Front Raise — 2x12"],
+      ["Hanging Leg Raise — 3x12","Plank — 3x50s"],
+      ["Shoulder stretch — 30s/side","Chest stretch — 30s"]),
+    D('long','Full Upper + Legs','45 min',
+      ["5 min light cardio","Arm circles — x15"],
+      ["Bench Press — 4x8","Row — 4x10","Squat — 3x10 (light-moderate, maintenance for running)"],
+      ["Ab Wheel Rollout — 3x10"],
+      ["Full upper-body stretch routine"]),
+    D('short','Core + Mobility','20 min — long run day',
+      ["Torso twists — x10"],
+      [],
+      ["4 rounds: Leg raise x12, Bicycle crunch x15, Side plank 20s/side, Superman x12"],
+      ["Hamstring, hip flexor, quad, calf stretch — 30-45s each"]),
+    D('rest','Rest Day — Full Stretch','15 min',[],[],[],
+      ["Full body stretch routine — 30-45s per muscle group"])
+  ];
+}
+
+// ---- PHASE 4 (Weeks 7-8): peak intensity ----
+function phase4Week(w){
+  const benchSets = w===1 ? "4x6-8" : "4x6, heaviest of the program";
+  const plankT = w===1 ? "3x55s" : "3x60s";
+  return [
+    D('long','Chest & Triceps — Peak','45 min',
+      ["5 min light cardio","Band pull-aparts — x15"],
+      [`Bench Press — ${benchSets}`,
+       "Weighted or decline push-ups — 3x max",
+       "Incline DB Press — 4x8",
+       "Cable Fly — 3x12",
+       "Dips — 3x10",
+       "Close-grip bench or pushdown — 3x10"],
+      ["Hanging leg raise w/ twist — 3x10",`Plank — ${plankT}`,"Cable Crunch — 3x15"],
+      ["Full upper stretch routine"]),
+    D('short','Short: Arms + Abs','20 min — after your run',
+      ["Arm circles — x10"],
+      ["DB Curl — 3x10 (drop set on last set)","Overhead Triceps Extension — 3x10"],
+      ["Plank — 3x55s","Bicycle crunch — 3x25"],
+      ["Biceps, triceps, hamstring stretch — 30s each"]),
+    D('long','Back & Biceps — Peak','45 min',
+      ["Arm swings — x15","Cat-cow — x8"],
+      ["Pull-ups — 4x max","Lat Pulldown — 4x8 (heavy)","Seated Row — 4x10","Curl 21s or drop set — 3 sets"],
+      ["Russian Twist — 3x25"],
+      ["Lat, upper-back, biceps stretch — 30s each"]),
+    D('short','Short: Shoulders + Abs','20 min — after your run',
+      ["Arm circles — x10"],
+      ["Arnold Press — 3x8","Lateral Raise — 3x12 (drop set last set)"],
+      ["Hanging Leg Raise — 3x12","Plank — 3x55s"],
+      ["Shoulder, chest stretch — 30s each"]),
+    D('long','Full Upper + Legs','45 min',
+      ["5 min light cardio","Arm circles — x15"],
+      ["Bench Press — 4x6","Row — 4x8","Squat — 3x8 (moderate, maintenance)"],
+      ["Ab Wheel Rollout — 3x12"],
+      ["Full upper-body stretch routine"]),
+    D('short','Core + Mobility — Final Push','20 min — long run day',
+      ["Torso twists — x10"],
+      [],
+      ["4-5 rounds: Leg raise x12, Bicycle crunch x15, Side plank 25s/side, Superman x12"],
+      ["Full lower-body stretch — hamstring, hip flexor, quad, calf, IT band"]),
+    D('rest','Rest Day — Cool Down & Reflect','15 min',[],[],[],
+      ["Full body stretch routine — take it slow, notice how far your upper body has come"])
+  ];
+}
+
+const PHASE_NAMES = ["Foundation","Build the Base","Push Harder","Peak Intensity"];
+const phaseGens = [phase1Week, phase2Week, phase3Week, phase4Week];
+const DOW = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+let PLAN = [];
+let globalWeek = 1;
+for(let phase=0; phase<4; phase++){
+  for(let w=1; w<=2; w++){
+    const days = phaseGens[phase](w);
+    days.forEach((d,i)=>{
+      PLAN.push(Object.assign({},d,{week:globalWeek, dow:DOW[i], phase:PHASE_NAMES[phase]}));
+    });
+    globalWeek++;
+  }
+}
+const TOTAL = PLAN.length; // 56
+
+/* ===================== STATE ===================== */
+const STORAGE_KEY = 'lift-log-plan-progress';
+let dayStatus = new Array(TOTAL).fill('pending'); // 'pending'|'done'|'skipped'
+let pointer = 0; // index of next workout due
+let viewIndex = 0; // index currently displayed (preview vs pointer)
+let loaded = false;
+
+async function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      if(Array.isArray(parsed.dayStatus) && parsed.dayStatus.length===TOTAL){
+        dayStatus = parsed.dayStatus;
+      }
+      if(typeof parsed.pointer==='number') pointer = parsed.pointer;
+    }
+  }catch(e){ /* no saved state yet */ }
+  viewIndex = Math.min(pointer, TOTAL-1);
+  loaded = true;
+  render();
+}
+
+async function saveState(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({dayStatus, pointer}));
+  }catch(e){ console.error('Could not save progress', e); }
+}
+
+function markComplete(){
+  if(pointer>=TOTAL) return;
+  dayStatus[pointer]='done';
+  pointer++;
+  viewIndex = Math.min(pointer, TOTAL-1);
+  saveState(); render();
+}
+function skipDay(){
+  if(pointer>=TOTAL) return;
+  dayStatus[pointer]='skipped';
+  pointer++;
+  viewIndex = Math.min(pointer, TOTAL-1);
+  saveState(); render();
+}
+function jumpToView(){
+  pointer = viewIndex;
+  saveState(); render();
+}
+function setView(i){
+  viewIndex = Math.max(0,Math.min(TOTAL-1,i));
+  render();
+}
+function unmarkDay(i){
+  if(dayStatus[i]==='pending') return;
+  dayStatus[i]='pending';
+  if(i<pointer) pointer=i;
+  saveState(); render();
+}
+let resetConfirming = false;
+function requestReset(){
+  resetConfirming = true;
+  render();
+}
+function cancelReset(){
+  resetConfirming = false;
+  render();
+}
+async function confirmReset(){
+  dayStatus = new Array(TOTAL).fill('pending');
+  pointer = 0; viewIndex = 0;
+  resetConfirming = false;
+  await saveState(); render();
+}
+
+/* ===================== RENDER ===================== */
+function exList(items){
+  if(!items || items.length===0) return '';
+  return '<ul class="ex-list">' + items.map(s=>{
+    const parts = s.split(' — ');
+    const name = parts[0];
+    const rest = parts.slice(1).join(' — ');
+    return `<li><span class="ex-name">${name}</span><span class="ex-detail">${rest}</span></li>`;
+  }).join('') + '</ul>';
+}
+
+function render(){
+  if(!loaded) return;
+  const app = document.getElementById('app');
+  const day = PLAN[viewIndex];
+  const isPointerView = viewIndex===pointer;
+  const doneCount = dayStatus.filter(s=>s==='done').length;
+  const skipCount = dayStatus.filter(s=>s==='skipped').length;
+
+  // build track (grouped by week)
+  let trackHtml = '';
+  for(let wk=1; wk<=8; wk++){
+    trackHtml += '<div class="week-block">';
+    for(let i=0;i<TOTAL;i++){
+      if(PLAN[i].week!==wk) continue;
+      let cls = 'tick '+dayStatus[i];
+      if(PLAN[i].type==='rest') cls += ' type-rest';
+      if(i===viewIndex) cls += ' current';
+      trackHtml += `<div class="${cls}" title="Week ${PLAN[i].week} ${PLAN[i].dow}: ${PLAN[i].title}" onclick="setView(${i})"></div>`;
+    }
+    trackHtml += '</div>';
+  }
+
+  let bodyHtml = '';
+
+  if(pointer>=TOTAL){
+    bodyHtml += `<div class="card finish"><div class="eyebrow">Program Complete</div><h2>8 Weeks Done</h2><p class="sub">You've completed every scheduled workout. Browse the track above to revisit any week, or reset to run it again at a higher weight.</p></div>`;
+  } else {
+    if(!isPointerView){
+      const status = dayStatus[viewIndex];
+      const label = status==='done' ? 'completed' : status==='skipped' ? 'skipped' : 'not yet reached';
+      bodyHtml += `<div class="preview-banner"><span>Previewing <b>Week ${day.week}, ${day.dow}</b> (${label}). Your next workout is <b>Week ${PLAN[pointer].week}, ${PLAN[pointer].dow}</b>.</span>
+        <button class="btn-jump" onclick="setView(${pointer})">Go to next workout</button></div>`;
+    }
+  }
+
+  const badgeClass = day.type==='long'?'long':day.type==='short'?'short':'rest';
+  const badgeText = day.type==='long' ? 'Full Session' : day.type==='short' ? 'Short Session' : 'Rest Day';
+
+  bodyHtml += `<div class="card">
+    <div class="card-head">
+      <div>
+        <span class="badge ${badgeClass}">${badgeText}</span>
+        <h2 class="day-title">${day.title}</h2>
+        <div class="day-meta">WEEK ${day.week} · ${day.dow.toUpperCase()} · ${day.phase.toUpperCase()}</div>
+      </div>
+      <div class="duration">${day.duration.split(' — ')[0]}<small>${day.duration.includes(' — ')? day.duration.split(' — ')[1] : ''}</small></div>
+    </div>`;
+
+  if(day.type==='short'){
+    bodyHtml += `<div class="run-note">This is a short day — designed to follow a run. Keep it efficient; upper body and core only.</div>`;
+  }
+
+  if(day.warmup && day.warmup.length){
+    bodyHtml += `<div class="section"><div class="section-label">Warm-up</div>${exList(day.warmup)}</div>`;
+  }
+  if(day.main && day.main.length){
+    bodyHtml += `<div class="section"><div class="section-label">Lifts</div>${exList(day.main)}</div>`;
+  }
+  if(day.core && day.core.length){
+    bodyHtml += `<div class="section"><div class="section-label">Core</div>${exList(day.core)}</div>`;
+  }
+  if(day.stretch && day.stretch.length){
+    bodyHtml += `<div class="section"><div class="section-label stretch">Stretch — Cool Down</div>${exList(day.stretch)}</div>`;
+  }
+
+  const viewStatus = dayStatus[viewIndex];
+
+  if(viewStatus==='done'){
+    bodyHtml += `<div class="done-banner">Marked complete. Tapped by accident? You can undo it below.</div>`;
+  } else if(viewStatus==='skipped'){
+    bodyHtml += `<div class="skip-banner">Marked skipped. Tapped by accident? You can undo it below.</div>`;
+  }
+
+  if(isPointerView && pointer<TOTAL){
+    bodyHtml += `<div class="actions">
+      <button class="btn-complete" onclick="markComplete()">Mark Complete — Next Workout</button>
+      <button class="btn-skip" onclick="skipDay()">Skip This Day</button>
+    </div>`;
+  } else if(viewStatus==='done' || viewStatus==='skipped'){
+    bodyHtml += `<div class="actions"><button class="btn-skip" onclick="unmarkDay(${viewIndex})">Undo — Set Back to Pending</button></div>`;
+  } else if(!isPointerView && viewStatus==='pending' && viewIndex!==pointer){
+    bodyHtml += `<div class="actions"><button class="btn-jump" onclick="jumpToView()">Set as my next workout</button></div>`;
+  }
+
+  bodyHtml += `<div class="footer-nav">
+    <button class="btn-nav" onclick="setView(${Math.max(0,viewIndex-1)})" ${viewIndex===0?'disabled':''}>← Prev</button>
+    <button class="btn-nav" onclick="setView(${Math.min(TOTAL-1,viewIndex+1)})" ${viewIndex===TOTAL-1?'disabled':''}>Next →</button>
+  </div>`;
+
+  bodyHtml += `</div>`;
+
+  app.innerHTML = `
+    <div class="header-card">
+      <div class="eyebrow">8-Week Upper Body Program · ${day.phase}</div>
+      <h1>Day ${viewIndex+1} / ${TOTAL}</h1>
+      <p class="sub" style="margin-bottom:0;">Runner base, building push/pull/core strength from zero. Tap any marker below to preview a day.</p>
+    </div>
+
+    <div class="track-wrap">
+      <div class="track-label"><span>WEEK 1</span><span>WEEK 8</span></div>
+      <div class="track">${trackHtml}</div>
+      <div class="status-row">
+        <span><span class="dot" style="background:var(--done)"></span>${doneCount} done</span>
+        <span><span class="dot" style="background:var(--skip)"></span>${skipCount} skipped</span>
+        <span><span class="dot" style="background:var(--accent)"></span>current</span>
+      </div>
+    </div>
+
+    ${bodyHtml}
+
+    ${resetConfirming ? `
+    <div class="reset-confirm">
+      <p>Reset all progress? This can't be undone.</p>
+      <div class="actions">
+        <button class="btn-nav" onclick="cancelReset()">Cancel</button>
+        <button class="btn-danger" onclick="confirmReset()">Yes, Reset Everything</button>
+      </div>
+    </div>` : `
+    <div class="reset-link"><a onclick="requestReset()">Reset all progress</a></div>`}
+  `;
+}
+
+loadState();
+</script>
+</body>
+</html>
