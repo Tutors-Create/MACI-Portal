@@ -426,6 +426,10 @@ async function confirmReset(){
   await saveState(); render();
 }
 
+// inline onclick="..." handlers in the rendered HTML need these on window —
+// module scripts don't leak top-level declarations into global scope.
+Object.assign(window, { markComplete, skipDay, jumpToView, setView, unmarkDay, requestReset, cancelReset, confirmReset });
+
 /* ===================== RENDER ===================== */
 function exList(items){
   if(!items || items.length===0) return '';
