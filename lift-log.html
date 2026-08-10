@@ -86,6 +86,8 @@ h1{font-family:'Oswald',sans-serif;font-weight:700;font-size:clamp(24px,9vw,36px
 .map-car img{width:100%;height:auto;display:block;}
 
 .lock-message{text-align:center;font-family:'JetBrains Mono',monospace;font-size:clamp(12px,3.3vw,12.5px);color:var(--streak);margin:12px 0 14px;}
+.sync-banner{display:flex;align-items:center;gap:8px;background:var(--bg-raised);border:1px solid var(--skip);color:var(--text-dim);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-family:'JetBrains Mono',monospace;font-size:clamp(11px,3.2vw,12px);line-height:1.4;}
+.sync-banner b{color:var(--skip);}
 
 /* badges */
 .badges-toggle{width:100%;background:var(--bg-card);border:1px solid var(--line);color:var(--text-dim);border-radius:10px;padding:12px 14px;font-family:'JetBrains Mono',monospace;font-size:clamp(12px,3.3vw,12.5px);text-align:left;display:flex;justify-content:space-between;align-items:center;margin:14px 0;}
@@ -465,14 +467,43 @@ function formatTime(sec){
 }
 
 /* ===================== STATE ===================== */
-// dayStatus/pointer/xp/badges/longestStreak sync across devices via Firestore.
-// Everything else (view position, timers, toasts, animations) is local/ephemeral.
+// dayStatus/pointer/xp/badges/longestStreak sync across devices via Firestore when
+// that connection works. They're also mirrored to localStorage on every change so
+// progress still survives a reload on this device if Firestore is unreachable —
+// e.g. a cross-origin iframe embed (Google Sites) can get its realtime connection
+// blocked by the browser's tracking protections even though the rest of the page
+// works fine.
 let dayStatus = new Array(TOTAL).fill('pending'); // 'pending'|'done'|'skipped'
 let pointer = 0;
 let xp = 0;
 let badges = [];
 let longestStreak = 0;
-let viewIndex = 0;
+
+const LOCAL_STORAGE_KEY = 'lift-log-progress-v1';
+function loadLocalState(){
+  try{
+    const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
+    if(!raw) return null;
+    return JSON.parse(raw);
+  }catch(e){ return null; }
+}
+function saveLocalState(){
+  try{
+    window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({dayStatus, pointer, xp, badges, longestStreak}));
+  }catch(e){ /* private browsing / storage disabled — nothing more we can do locally */ }
+}
+function applyParsedState(parsed){
+  if(Array.isArray(parsed.dayStatus) && parsed.dayStatus.length===TOTAL) dayStatus = parsed.dayStatus;
+  if(typeof parsed.pointer==='number') pointer = parsed.pointer;
+  if(typeof parsed.xp==='number') xp = parsed.xp;
+  if(Array.isArray(parsed.badges)) badges = parsed.badges;
+  if(typeof parsed.longestStreak==='number') longestStreak = parsed.longestStreak;
+}
+
+const localState = loadLocalState();
+if(localState) applyParsedState(localState);
+
+let viewIndex = Math.min(pointer, TOTAL-1);
 let loaded = false;
 let badgesOpen = false;
 let resetConfirming = false;
@@ -483,10 +514,12 @@ let toasts = [];
 let levelUp = null;
 let confetti = [];
 let uid = 0;
+let syncError = null;
 
 function startStateSync(){
   onSnapshot(stateDocRef, async (snap)=>{
     if(snap.metadata.hasPendingWrites) return; // echo of our own not-yet-confirmed write; already rendered locally
+    syncError = null;
     const wasAtPointer = viewIndex===pointer;
     if(!snap.exists()){
       if(!loaded){ viewIndex = Math.min(pointer, TOTAL-1); }
@@ -496,30 +529,33 @@ function startStateSync(){
       return;
     }
     try{
-      const parsed = JSON.parse(snap.data().json);
-      if(Array.isArray(parsed.dayStatus) && parsed.dayStatus.length===TOTAL) dayStatus = parsed.dayStatus;
-      if(typeof parsed.pointer==='number') pointer = parsed.pointer;
-      if(typeof parsed.xp==='number') xp = parsed.xp;
-      if(Array.isArray(parsed.badges)) badges = parsed.badges;
-      if(typeof parsed.longestStreak==='number') longestStreak = parsed.longestStreak;
+      applyParsedState(JSON.parse(snap.data().json));
+      saveLocalState();
     }catch(e){ /* ignore malformed remote data */ }
     if(!loaded || wasAtPointer){ viewIndex = Math.min(pointer, TOTAL-1); }
     loaded = true;
     render();
   }, (err)=>{
     console.error("Firestore sync error", err);
+    syncError = err && (err.code || err.message) || 'Could not connect to sync';
     if(!loaded){
       loaded = true;
       viewIndex = Math.min(pointer, TOTAL-1);
-      render();
     }
+    render();
   });
 }
 
 async function saveState(){
+  saveLocalState(); // guarantees this device keeps progress even if the shared sync below fails
   try{
     await setDoc(stateDocRef, { json: JSON.stringify({dayStatus, pointer, xp, badges, longestStreak}) });
-  }catch(e){ console.error('Could not save progress', e); }
+    syncError = null;
+  }catch(e){
+    console.error('Could not save progress', e);
+    syncError = (e && (e.code || e.message)) || 'Could not save progress';
+    render();
+  }
 }
 
 /* ===================== DERIVED / HELPERS ===================== */
@@ -913,6 +949,7 @@ function render(){
   const confettiHtml = confetti.map(c=>`<div class="confetti-piece" style="left:${c.left}vw;width:${c.size}px;height:${c.height}px;background:${c.color};animation-duration:${c.duration}s;"></div>`).join('');
 
   app.innerHTML = `
+    ${syncError ? `<div class="sync-banner"><span><b>Not synced:</b> ${syncError}. Your taps are saved on this device but won't follow you to another one until this clears — try reloading the page.</span></div>` : ''}
     <div class="header-card">
       <div class="eyebrow">8-Week Upper Body Program · ${day.phase}</div>
       <h1>Day ${viewIndex+1} / ${TOTAL}</h1>
