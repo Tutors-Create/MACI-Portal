@@ -24,6 +24,7 @@
   --steel-dim:#33465499;
   --done:#7c9473;
   --skip:#a35a3f;
+  --streak:#e08a4d;
   --long:var(--accent);
   --short:var(--steel);
   --rest:#5a6470;
@@ -39,24 +40,68 @@ h1{font-family:'Oswald',sans-serif;font-weight:700;font-size:clamp(24px,9vw,36px
 .sub{color:var(--text-dim);font-size:clamp(13.5px,3.8vw,15px);line-height:1.45;margin:0 0 20px;}
 .header-card{background:var(--bg-card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px;}
 
-/* progress track */
-.track-wrap{margin-bottom:20px;}
-.track-label{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:clamp(11px,3vw,12px);color:var(--text-dim);margin-bottom:8px;letter-spacing:.05em;}
-.track{display:flex;gap:3px;background:var(--bg-card);padding:8px;border-radius:8px;border:1px solid var(--line);overflow-x:auto;-webkit-overflow-scrolling:touch;}
-.week-block{display:flex;gap:2px;flex:1;padding:0 2px;position:relative;min-width:0;}
-.week-block:not(:last-child){border-right:1px solid var(--line);}
-.tick{flex:1;height:30px;min-width:6px;border-radius:3px;background:var(--line);cursor:pointer;transition:transform .12s ease;position:relative;}
-.tick:active{transform:scale(0.9);}
-.tick.done{background:var(--done);}
-.tick.skipped{background:var(--skip);opacity:.55;}
-.tick.pending{background:var(--line);}
-.tick.current{background:var(--accent);box-shadow:0 0 0 2px var(--bg-card),0 0 0 3px var(--accent);}
-.tick.type-rest{opacity:.4;}
+/* stats row: streak / level / xp */
+.stats-row{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;}
+.streak-pill{display:flex;align-items:center;gap:6px;background:var(--bg-raised);border:1px solid var(--streak);border-radius:20px;padding:7px 12px;font-family:'JetBrains Mono',monospace;font-size:clamp(11px,3vw,12px);color:var(--streak);white-space:nowrap;font-weight:700;}
+.level-pill{display:flex;align-items:center;gap:6px;background:var(--bg-raised);border:1px solid var(--line);border-radius:20px;padding:7px 12px;font-family:'JetBrains Mono',monospace;font-size:clamp(11px,3vw,12px);color:var(--text);font-weight:700;white-space:nowrap;}
+.xp-wrap{flex:1;min-width:110px;display:flex;flex-direction:column;gap:4px;}
+.xp-track{height:8px;border-radius:5px;background:var(--line);overflow:hidden;}
+.xp-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--accent-dim),var(--accent));transition:width .4s ease;}
+.xp-label{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-faint);letter-spacing:.04em;}
 
-/* status strip */
-.status-row{display:flex;gap:12px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-size:clamp(10.5px,3vw,12px);color:var(--text-dim);margin-top:8px;}
-.status-row span{display:flex;align-items:center;gap:5px;}
-.dot{width:8px;height:8px;border-radius:2px;display:inline-block;flex-shrink:0;}
+/* road-trip map */
+.road-map{position:relative;background:linear-gradient(180deg,#4a7a68 0%,#33544a 55%,#22332f 100%);border:1px solid var(--line);border-radius:20px;padding:20px 16px 18px;margin-bottom:6px;}
+.road-map.expanded{padding:0;overflow:hidden;height:1860px;}
+.collapsed-inner{display:flex;flex-direction:column;align-items:center;}
+.scene-icon{width:140px;height:162px;border-radius:14px;box-shadow:0 8px 20px rgba(0,0,0,.4);background:var(--bg-raised);display:flex;align-items:center;justify-content:center;font-size:64px;}
+.scene-icon.big{width:170px;height:196px;font-size:76px;}
+.scene-icon.is-locked{opacity:.5;filter:grayscale(1) brightness(.65);}
+.postcard{margin-top:10px;background:#fdf6e3;border-radius:9px;padding:8px 14px;box-shadow:0 3px 9px rgba(0,0,0,.4);text-align:center;max-width:148px;}
+.postcard .pc-eyebrow{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.09em;color:#8a6d1f;font-weight:700;}
+.postcard .pc-title{font-family:'Oswald',sans-serif;font-size:clamp(12px,3.4vw,14px);font-weight:600;color:#2b2013;line-height:1.22;margin-top:2px;}
+.rail-row{display:flex;align-items:center;gap:10px;margin-top:16px;width:100%;max-width:320px;}
+.rail{position:relative;flex:1;height:14px;background:#3f4a42;border-radius:7px;}
+.rail-dash{position:absolute;top:50%;left:4%;right:4%;height:3px;transform:translateY(-50%);background:repeating-linear-gradient(90deg,var(--accent) 0 8px,transparent 8px 16px);border-radius:2px;}
+.rail-car{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:26px;transition:left .5s ease;filter:drop-shadow(0 4px 8px rgba(0,0,0,.5));}
+.next-thumb{width:52px;height:52px;border-radius:12px;background:#2b3038;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:26px;filter:grayscale(1) brightness(.6);opacity:.7;}
+
+.map-toggle{text-align:center;margin:10px 0 0;}
+.map-toggle a{color:var(--text-dim);font-size:clamp(12px,3.3vw,13px);font-family:'JetBrains Mono',monospace;cursor:pointer;text-decoration:underline;padding:6px;display:inline-block;}
+
+.road-svg{position:absolute;inset:0;width:100%;height:100%;}
+.road-base{fill:none;stroke:#3f4a42;stroke-width:15;stroke-linecap:round;}
+.road-dash{fill:none;stroke:var(--accent);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:13 15;opacity:.9;}
+.start-pin{position:absolute;left:50%;top:2px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;z-index:2;}
+.start-label{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text);letter-spacing:.16em;margin-top:2px;font-weight:700;}
+
+.map-node{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;width:148px;cursor:pointer;z-index:2;}
+.map-node.locked{background:#2b3038;border-radius:18px;padding:12px 6px 10px;box-shadow:inset 0 0 0 1px #3a4048;}
+.scene-wrap{position:relative;width:140px;}
+.node-badge{position:absolute;top:-9px;left:-9px;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:15px;box-shadow:0 2px 6px rgba(0,0,0,.45);border-width:3px;border-style:solid;}
+.node-badge.current{--glow:rgba(244,196,48,.4);animation:pulseRing 2s ease-in-out infinite;}
+.map-car{position:absolute;font-size:44px;z-index:5;transition:left .6s ease, top .6s ease, transform .6s ease;filter:drop-shadow(0 8px 12px rgba(0,0,0,.55));}
+
+.lock-message{text-align:center;font-family:'JetBrains Mono',monospace;font-size:clamp(12px,3.3vw,12.5px);color:var(--streak);margin:12px 0 14px;}
+
+/* badges */
+.badges-toggle{width:100%;background:var(--bg-card);border:1px solid var(--line);color:var(--text-dim);border-radius:10px;padding:12px 14px;font-family:'JetBrains Mono',monospace;font-size:clamp(12px,3.3vw,12.5px);text-align:left;display:flex;justify-content:space-between;align-items:center;margin:14px 0;}
+.badges-panel{background:var(--bg-card);border:1px solid var(--line);border-radius:10px;padding:4px 14px;margin:-8px 0 14px;}
+.badge-row{display:flex;gap:13px;align-items:flex-start;padding:13px 0;border-bottom:1px solid var(--line);}
+.badge-row:last-child{border-bottom:none;}
+.badge-icon{flex-shrink:0;}
+.badge-name{font-weight:600;font-size:14px;}
+.badge-desc{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-dim);margin-top:2px;}
+
+/* per-week day strip */
+.day-strip-wrap{margin-bottom:16px;}
+.day-strip-label{font-family:'JetBrains Mono',monospace;font-size:clamp(11px,3vw,12px);color:var(--text-dim);margin-bottom:8px;letter-spacing:.05em;display:flex;justify-content:space-between;}
+.day-strip{display:flex;gap:5px;background:var(--bg-card);padding:8px;border-radius:8px;border:1px solid var(--line);}
+.dtick{flex:1;height:36px;border-radius:5px;cursor:pointer;background:var(--line);transition:transform .12s ease;}
+.dtick:active{transform:scale(.94);}
+.dtick.done{background:var(--done);}
+.dtick.skipped{background:var(--skip);}
+.dtick.type-rest{opacity:.5;}
+.dtick.current{background:var(--accent);box-shadow:0 0 0 2px var(--bg-card),0 0 0 3px var(--accent);}
 
 /* card */
 .card{background:var(--bg-card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px;}
@@ -79,6 +124,9 @@ ul.ex-list li{display:flex;flex-direction:column;gap:4px;padding:12px 0;border-b
 ul.ex-list li:last-child{border-bottom:none;}
 .ex-name{font-weight:600;color:var(--text);font-size:clamp(15px,4.2vw,16.5px);line-height:1.35;}
 .ex-detail{color:var(--text-dim);font-family:'JetBrains Mono',monospace;font-size:clamp(12.5px,3.6vw,14px);line-height:1.55;}
+.ex-timer{display:flex;align-items:center;gap:11px;margin-top:4px;}
+.timer-btn{width:50px;height:50px;border-radius:50%;color:#0e1216;border:none;font-size:19px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0;}
+.timer-time{font-family:'JetBrains Mono',monospace;font-size:clamp(14px,4vw,17px);font-weight:700;min-width:80px;}
 .run-note{background:var(--bg-raised);border-left:3px solid var(--steel);padding:12px 14px;font-size:clamp(13px,3.6vw,14.5px);line-height:1.45;color:var(--text-dim);border-radius:0 8px 8px 0;margin-bottom:18px;}
 
 .actions{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;}
@@ -108,6 +156,20 @@ button:active{transform:translateY(1px);opacity:.85;}
 .reset-confirm{background:var(--bg-card);border:1px solid var(--skip);border-radius:12px;padding:16px;margin-top:20px;text-align:center;}
 .reset-confirm p{margin:0 0 12px;font-size:clamp(13.5px,3.8vw,15px);color:var(--text);}
 .reset-confirm .actions{margin-top:0;}
+
+/* toasts / level-up / confetti */
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--bg-raised);border:2px solid var(--accent);color:var(--text);font-family:'Oswald',sans-serif;font-size:clamp(14px,4vw,16px);padding:14px 22px;border-radius:12px;z-index:999;box-shadow:0 10px 30px rgba(0,0,0,.5);max-width:88vw;text-align:center;animation:toastIn .3s ease;display:flex;align-items:center;gap:12px;justify-content:center;}
+.levelup-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(20,23,28,.9);z-index:1000;}
+.levelup-card{text-align:center;animation:levelPop .5s cubic-bezier(.2,.9,.3,1.3);}
+.levelup-bar{width:220px;height:14px;background:repeating-linear-gradient(90deg,var(--text) 0 20px,var(--bg) 20px 40px);border-radius:4px;margin:0 auto 18px;box-shadow:0 4px 14px rgba(0,0,0,.4);}
+.levelup-eyebrow{font-family:'JetBrains Mono',monospace;color:var(--accent);font-size:15px;letter-spacing:.24em;text-transform:uppercase;margin-bottom:8px;}
+.levelup-title{font-family:'Oswald',sans-serif;font-size:clamp(44px,14vw,64px);color:var(--text);text-transform:uppercase;margin:0;text-shadow:0 0 40px rgba(244,196,48,.6);}
+.confetti-piece{position:fixed;top:-16px;z-index:998;pointer-events:none;border-radius:2px;animation:confettiFall linear forwards;}
+
+@keyframes pulseRing{0%,100%{box-shadow:0 0 0 6px var(--glow);}50%{box-shadow:0 0 0 13px transparent;}}
+@keyframes confettiFall{0%{transform:translateY(0) rotate(0deg);opacity:1;}100%{transform:translateY(115vh) rotate(480deg);opacity:0;}}
+@keyframes toastIn{0%{opacity:0;transform:translate(-50%,16px) scale(.9);}100%{opacity:1;transform:translate(-50%,0) scale(1);}}
+@keyframes levelPop{0%{transform:scale(.5) rotate(-6deg);opacity:0;}55%{transform:scale(1.12) rotate(2deg);opacity:1;}100%{transform:scale(1) rotate(0deg);opacity:1;}}
 </style>
 </head>
 <body>
@@ -327,8 +389,7 @@ const phaseGens = [phase1Week, phase2Week, phase3Week, phase4Week];
 const DOW = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
 let PLAN = [];
-let globalWeek = 1;
-for(let phase=0; phase<4; phase++){
+for(let phase=0, globalWeek=1; phase<4; phase++){
   for(let w=1; w<=2; w++){
     const days = phaseGens[phase](w);
     days.forEach((d,i)=>{
@@ -338,12 +399,75 @@ for(let phase=0; phase<4; phase++){
   }
 }
 const TOTAL = PLAN.length; // 56
+const XP_PER_LEVEL = 150;
+
+const NODE_META = [
+  {week:1, icon:'🔧', nameUpper:'FIX-IT GARAGE', left:24, top:160, tilt:-3},
+  {week:2, icon:'🛠️', nameUpper:'TUNE-UP SHOP', left:76, top:370, tilt:3},
+  {week:3, icon:'🏨', nameUpper:'ROADSIDE MOTEL', left:24, top:580, tilt:-3},
+  {week:4, icon:'🍽️', nameUpper:'PIT-STOP DINER', left:76, top:790, tilt:3},
+  {week:5, icon:'🚙', nameUpper:'JUNKYARD CROSSING', left:24, top:1000, tilt:-3},
+  {week:6, icon:'🏎️', nameUpper:'SPEED SHOP', left:76, top:1210, tilt:3},
+  {week:7, icon:'⛽', nameUpper:'FUEL STOP', left:24, top:1420, tilt:-3},
+  {week:8, icon:'🏁', nameUpper:'FINISH LINE', left:76, top:1630, tilt:3}
+];
+const ROAD_ANCHORS = [{x:50,y:30}, {x:24,y:160},{x:76,y:370},{x:24,y:580},{x:76,y:790},{x:24,y:1000},{x:76,y:1210},{x:24,y:1420},{x:76,y:1630}];
+
+const BADGE_DEFS = [
+  {id:'first_workout', name:'First Rep', desc:'Complete your first workout.', color:'#f4c430'},
+  {id:'ten_workouts', name:'Getting Serious', desc:'Complete 10 workouts.', color:'#2fa1a1'},
+  {id:'twentyfive_workouts', name:'Iron Habit', desc:'Complete 25 workouts.', color:'#d9678c'},
+  {id:'halfway', name:'Halfway There', desc:'Reach Week 5.', color:'#e08a4d'},
+  {id:'perfect_week', name:'Flawless Week', desc:'Finish a week with zero skips.', color:'#5b7c99'},
+  {id:'streak7', name:'On Fire', desc:'Hit a 7-workout streak.', color:'#7c9473'},
+  {id:'program_complete', name:'Program Complete', desc:'Finish all 8 weeks.', color:'#d1453a'},
+  {id:'no_skips', name:'No Days Off', desc:"Finish the whole program without skipping a single day.", color:'#8a7a9c'}
+];
+
+const CHECK_SVG = '<svg width="14" height="12" viewBox="0 0 10 8"><path d="M1 4L4 7L9 1" stroke="#14171c" stroke-width="1.9" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
+const LOCK_SVG = '<svg width="14" height="16" viewBox="0 0 18 20"><rect x="2" y="9" width="14" height="10" rx="2" fill="#5a6470"></rect><path d="M5 9V6a4 4 0 018 0v3" stroke="#5a6470" stroke-width="2.4" fill="none"></path></svg>';
+const START_PIN_SVG = '<svg width="24" height="42" viewBox="0 0 26 46"><rect x="11" y="20" width="4" height="26" fill="#4a4038"></rect><rect x="3" y="0" width="20" height="26" rx="4" fill="#2b2b2b"></rect><circle cx="13" cy="7" r="4.5" fill="#d1453a"></circle><circle cx="13" cy="16" r="4.5" fill="#3a3a3a"></circle><circle cx="13" cy="25" r="4.5" fill="#3a3a3a"></circle></svg>';
+function badgeShield(color){ return `<svg width="22" height="25" viewBox="0 0 26 30" style="flex-shrink:0;"><path d="M13 0L26 5V15C26 22 20 27 13 30C6 27 0 22 0 15V5L13 0Z" fill="${color}"></path></svg>`; }
+
+function segmentPoint(pa, pb, t){
+  const dy = pb.y-pa.y, half = dy/2;
+  const c1x=pa.x, c1y=pa.y+half, c2x=pb.x, c2y=pb.y-half;
+  const mt=1-t;
+  const x = mt*mt*mt*pa.x + 3*mt*mt*t*c1x + 3*mt*t*t*c2x + t*t*t*pb.x;
+  const y = mt*mt*mt*pa.y + 3*mt*mt*t*c1y + 3*mt*t*t*c2y + t*t*t*pb.y;
+  return {x,y};
+}
+function parseDuration(str){
+  let m = str.match(/(\d+)\s*(?:minutes|minute|mins|min)\b/i);
+  if(m) return parseInt(m[1],10)*60;
+  m = str.match(/(\d+)\s*s\b/i);
+  if(m) return parseInt(m[1],10);
+  return null;
+}
+function formatTime(sec){
+  const m = Math.floor(sec/60), s = sec%60;
+  return m>0 ? (m+':'+String(s).padStart(2,'0')) : (s+'s');
+}
 
 /* ===================== STATE ===================== */
+// dayStatus/pointer/xp/badges/longestStreak sync across devices via Firestore.
+// Everything else (view position, timers, toasts, animations) is local/ephemeral.
 let dayStatus = new Array(TOTAL).fill('pending'); // 'pending'|'done'|'skipped'
-let pointer = 0; // index of next workout due
-let viewIndex = 0; // index currently displayed (preview vs pointer)
+let pointer = 0;
+let xp = 0;
+let badges = [];
+let longestStreak = 0;
+let viewIndex = 0;
 let loaded = false;
+let badgesOpen = false;
+let resetConfirming = false;
+let lockMessage = '';
+let mapExpanded = false;
+let timers = {};
+let toasts = [];
+let levelUp = null;
+let confetti = [];
+let uid = 0;
 
 function startStateSync(){
   onSnapshot(stateDocRef, async (snap)=>{
@@ -353,15 +477,16 @@ function startStateSync(){
       if(!loaded){ viewIndex = Math.min(pointer, TOTAL-1); }
       loaded = true;
       render();
-      try{ await setDoc(stateDocRef, { json: JSON.stringify({dayStatus, pointer}) }); }catch(e){ /* first client to arrive creates it; ignore races */ }
+      try{ await setDoc(stateDocRef, { json: JSON.stringify({dayStatus, pointer, xp, badges, longestStreak}) }); }catch(e){ /* first client to arrive creates it; ignore races */ }
       return;
     }
     try{
       const parsed = JSON.parse(snap.data().json);
-      if(Array.isArray(parsed.dayStatus) && parsed.dayStatus.length===TOTAL){
-        dayStatus = parsed.dayStatus;
-      }
+      if(Array.isArray(parsed.dayStatus) && parsed.dayStatus.length===TOTAL) dayStatus = parsed.dayStatus;
       if(typeof parsed.pointer==='number') pointer = parsed.pointer;
+      if(typeof parsed.xp==='number') xp = parsed.xp;
+      if(Array.isArray(parsed.badges)) badges = parsed.badges;
+      if(typeof parsed.longestStreak==='number') longestStreak = parsed.longestStreak;
     }catch(e){ /* ignore malformed remote data */ }
     if(!loaded || wasAtPointer){ viewIndex = Math.min(pointer, TOTAL-1); }
     loaded = true;
@@ -378,23 +503,175 @@ function startStateSync(){
 
 async function saveState(){
   try{
-    await setDoc(stateDocRef, { json: JSON.stringify({dayStatus, pointer}) });
+    await setDoc(stateDocRef, { json: JSON.stringify({dayStatus, pointer, xp, badges, longestStreak}) });
   }catch(e){ console.error('Could not save progress', e); }
 }
 
+/* ===================== DERIVED / HELPERS ===================== */
+function currentLevel(x){ return Math.floor(x/XP_PER_LEVEL)+1; }
+function xpIntoLevel(x){ return x % XP_PER_LEVEL; }
+function xpForDay(day){ return day.type==='rest' ? 5 : 15; }
+
+function computeCurrentStreak(){
+  let streak = 0;
+  for(let i=pointer-1; i>=0; i--){ if(dayStatus[i]==='done') streak++; else break; }
+  return streak;
+}
+function weekIndices(wk){ const arr=[]; PLAN.forEach((d,i)=>{ if(d.week===wk) arr.push(i); }); return arr; }
+function weekStatus(wk){
+  const idxs = weekIndices(wk);
+  const first = idxs[0], last = idxs[idxs.length-1];
+  if(pointer>last) return 'complete';
+  if(pointer>=first) return 'current';
+  return 'locked';
+}
+function weekFocusLabel(wk){
+  const focusDay = PLAN.find(d=>d.week===wk && d.type==='long');
+  return focusDay ? focusDay.title : '';
+}
+function badgeConditionMet(id){
+  const doneCount = dayStatus.filter(s=>s==='done').length;
+  const skipCount = dayStatus.filter(s=>s==='skipped').length;
+  switch(id){
+    case 'first_workout': return doneCount>=1;
+    case 'ten_workouts': return doneCount>=10;
+    case 'twentyfive_workouts': return doneCount>=25;
+    case 'halfway': { const idx = PLAN.findIndex(d=>d.week===5); return pointer>=idx; }
+    case 'perfect_week': {
+      for(let wk=1; wk<=8; wk++){
+        const idxs = weekIndices(wk);
+        const last = idxs[idxs.length-1];
+        if(pointer>last && idxs.every(i=>dayStatus[i]==='done')) return true;
+      }
+      return false;
+    }
+    case 'streak7': return longestStreak>=7;
+    case 'program_complete': return pointer>=TOTAL;
+    case 'no_skips': return pointer>=TOTAL && skipCount===0;
+  }
+  return false;
+}
+function checkBadges(){
+  const newly = [];
+  BADGE_DEFS.forEach(b=>{
+    if(!badges.includes(b.id) && badgeConditionMet(b.id)){ badges.push(b.id); newly.push(b); }
+  });
+  return newly;
+}
+
+function showToast(msg,color){
+  const id = 'toast'+(uid++);
+  toasts.push({id, msg, color: color||'var(--accent)'});
+  render();
+  setTimeout(()=>{ toasts = toasts.filter(t=>t.id!==id); render(); }, 3200);
+}
+function showLevelUp(level){
+  levelUp = {level};
+  playChime(true);
+  render();
+  setTimeout(()=>{ levelUp = null; render(); }, 1900);
+}
+function burstConfetti(){
+  const colors = ['#f4c430','#5b7c99','#7c9473','#e08a4d','#d9678c','#2fa1a1','#eef1f0'];
+  const pieces = [];
+  for(let i=0;i<46;i++){
+    pieces.push({id:'c'+(uid++), left:Math.round(Math.random()*100), size:6+Math.round(Math.random()*7), height:10+Math.round(Math.random()*10), color:colors[Math.floor(Math.random()*colors.length)], duration:(1.2+Math.random()*1.1).toFixed(2)});
+  }
+  confetti = confetti.concat(pieces);
+  render();
+  const ids = pieces.map(p=>p.id);
+  setTimeout(()=>{ confetti = confetti.filter(c=>!ids.includes(c.id)); render(); }, 2600);
+}
+function playChime(big){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const notes = big ? [523.25,659.25,783.99,1046.5,1318.5] : [880,1174.7];
+    notes.forEach((freq,i)=>{
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = 'sine'; osc.frequency.value = freq;
+      const t0 = ctx.currentTime + i*0.09;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(big?0.18:0.15, t0+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0+0.28);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t0); osc.stop(t0+0.3);
+    });
+    setTimeout(()=>ctx.close(), 1000);
+  }catch(e){}
+}
+
+function toggleTimer(tid, total){
+  let st = timers[tid];
+  if(!st){ st = {remaining: total, total, running:false, done:false}; }
+  if(st.done){ st = Object.assign({}, st, {remaining: total, done:false}); }
+  if(st.running){
+    if(st.handle) clearInterval(st.handle);
+    st = Object.assign({}, st, {running:false});
+    timers[tid] = st;
+    render();
+    return;
+  }
+  st = Object.assign({}, st, {running:true});
+  timers[tid] = st;
+  render();
+  const handle = setInterval(()=>{
+    const cur = timers[tid];
+    if(!cur){ clearInterval(handle); return; }
+    const remaining = cur.remaining-1;
+    if(remaining<=0){
+      clearInterval(handle);
+      timers[tid] = Object.assign({}, cur, {remaining:0, running:false, done:true});
+      playChime(false);
+      timerAwardXP(2);
+      render();
+      return;
+    }
+    timers[tid] = Object.assign({}, cur, {remaining});
+    render();
+  }, 1000);
+  timers[tid].handle = handle;
+}
+function timerAwardXP(amount){
+  const prevLevel = currentLevel(xp);
+  xp += amount;
+  saveState();
+  if(currentLevel(xp)>prevLevel) showLevelUp(currentLevel(xp));
+}
+
+/* ===================== ACTIONS ===================== */
 function markComplete(){
   if(pointer>=TOTAL) return;
+  const day = PLAN[pointer];
   dayStatus[pointer]='done';
+  const prevLevel = currentLevel(xp);
+  xp += xpForDay(day);
+  const prevWeek = day.week;
   pointer++;
   viewIndex = Math.min(pointer, TOTAL-1);
-  saveState(); render();
+  lockMessage = '';
+  longestStreak = Math.max(longestStreak, computeCurrentStreak());
+  const newBadges = checkBadges();
+  const crossedWeek = pointer>=TOTAL || PLAN[pointer].week!==prevWeek;
+  saveState();
+  render();
+  if(currentLevel(xp)>prevLevel) showLevelUp(currentLevel(xp));
+  if(crossedWeek) burstConfetti();
+  if(newBadges.length) showToast(newBadges.map(b=>b.name).join(' · '), newBadges[0].color);
 }
 function skipDay(){
   if(pointer>=TOTAL) return;
+  const day = PLAN[pointer];
   dayStatus[pointer]='skipped';
+  const prevWeek = day.week;
   pointer++;
   viewIndex = Math.min(pointer, TOTAL-1);
-  saveState(); render();
+  lockMessage = '';
+  const newBadges = checkBadges();
+  const crossedWeek = pointer>=TOTAL || PLAN[pointer].week!==prevWeek;
+  saveState();
+  render();
+  if(crossedWeek) burstConfetti();
+  if(newBadges.length) showToast(newBadges.map(b=>b.name).join(' · '), newBadges[0].color);
 }
 function jumpToView(){
   pointer = viewIndex;
@@ -402,42 +679,63 @@ function jumpToView(){
 }
 function setView(i){
   viewIndex = Math.max(0,Math.min(TOTAL-1,i));
+  lockMessage = '';
   render();
 }
 function unmarkDay(i){
-  if(dayStatus[i]==='pending') return;
+  const prevStatus = dayStatus[i];
+  if(prevStatus==='pending') return;
+  if(prevStatus==='done') xp = Math.max(0, xp - xpForDay(PLAN[i]));
   dayStatus[i]='pending';
   if(i<pointer) pointer=i;
   saveState(); render();
 }
-let resetConfirming = false;
-function requestReset(){
-  resetConfirming = true;
-  render();
-}
-function cancelReset(){
-  resetConfirming = false;
-  render();
-}
-async function confirmReset(){
+function requestReset(){ resetConfirming = true; render(); }
+function cancelReset(){ resetConfirming = false; render(); }
+function confirmReset(){
+  Object.values(timers).forEach(t=>{ if(t && t.handle) clearInterval(t.handle); });
   dayStatus = new Array(TOTAL).fill('pending');
-  pointer = 0; viewIndex = 0;
-  resetConfirming = false;
-  await saveState(); render();
+  pointer = 0; viewIndex = 0; xp = 0; badges = []; longestStreak = 0;
+  resetConfirming = false; lockMessage = ''; badgesOpen = false; timers = {};
+  saveState(); render();
 }
+function toggleMap(){ mapExpanded = !mapExpanded; render(); }
+function mapNodeClick(wk){
+  const status = weekStatus(wk);
+  if(status==='locked'){ lockMessage = `Finish Week ${wk-1} to unlock Week ${wk}.`; render(); return; }
+  lockMessage = '';
+  viewIndex = weekIndices(wk)[0];
+  render();
+}
+function toggleBadges(){ badgesOpen = !badgesOpen; render(); }
 
 // inline onclick="..." handlers in the rendered HTML need these on window —
 // module scripts don't leak top-level declarations into global scope.
-Object.assign(window, { markComplete, skipDay, jumpToView, setView, unmarkDay, requestReset, cancelReset, confirmReset });
+Object.assign(window, {
+  markComplete, skipDay, jumpToView, setView, unmarkDay, requestReset, cancelReset, confirmReset,
+  toggleMap, mapNodeClick, toggleBadges, toggleTimer
+});
 
 /* ===================== RENDER ===================== */
-function exList(items){
+function exList(items, prefix){
   if(!items || items.length===0) return '';
-  return '<ul class="ex-list">' + items.map(s=>{
+  return '<ul class="ex-list">' + items.map((s,idx)=>{
     const parts = s.split(' — ');
     const name = parts[0];
     const rest = parts.slice(1).join(' — ');
-    return `<li><span class="ex-name">${name}</span><span class="ex-detail">${rest}</span></li>`;
+    const duration = parseDuration(s);
+    let timerHtml = '';
+    if(duration){
+      const tid = prefix+'-'+idx;
+      const st = timers[tid];
+      let label='▶', bg='var(--steel)', color='var(--text-dim)', display=formatTime(duration);
+      if(st){
+        if(st.done){ label='✓'; bg='var(--done)'; color='var(--done)'; display='Done +2xp'; }
+        else { label = st.running?'❙❙':'▶'; bg = st.running?'var(--accent)':'var(--steel)'; display=formatTime(st.remaining); }
+      }
+      timerHtml = `<div class="ex-timer"><button class="timer-btn" style="background:${bg};" onclick="toggleTimer('${tid}',${duration})">${label}</button><span class="timer-time" style="color:${color};">${display}</span></div>`;
+    }
+    return `<li><span class="ex-name">${name}</span><span class="ex-detail">${rest}</span>${timerHtml}</li>`;
   }).join('') + '</ul>';
 }
 
@@ -446,34 +744,99 @@ function render(){
   const app = document.getElementById('app');
   const day = PLAN[viewIndex];
   const isPointerView = viewIndex===pointer;
-  const doneCount = dayStatus.filter(s=>s==='done').length;
-  const skipCount = dayStatus.filter(s=>s==='skipped').length;
+  const level = currentLevel(xp);
+  const into = xpIntoLevel(xp);
+  const xpPercent = Math.round((into/XP_PER_LEVEL)*100);
+  const streak = computeCurrentStreak();
 
-  // build track (grouped by week)
-  let trackHtml = '';
-  for(let wk=1; wk<=8; wk++){
-    trackHtml += '<div class="week-block">';
-    for(let i=0;i<TOTAL;i++){
-      if(PLAN[i].week!==wk) continue;
-      let cls = 'tick '+dayStatus[i];
-      if(PLAN[i].type==='rest') cls += ' type-rest';
-      if(i===viewIndex) cls += ' current';
-      trackHtml += `<div class="${cls}" title="Week ${PLAN[i].week} ${PLAN[i].dow}: ${PLAN[i].title}" onclick="setView(${i})"></div>`;
-    }
-    trackHtml += '</div>';
+  const mapNodes = NODE_META.map(n=>{
+    const status = weekStatus(n.week);
+    return Object.assign({}, n, {
+      status, isLocked: status==='locked', isComplete: status==='complete', isCurrent: status==='current',
+      focusLabel: weekFocusLabel(n.week)
+    });
+  });
+
+  const activeWeek = Math.min(8, PLAN[Math.min(pointer, TOTAL-1)].week);
+  const currentNodeData = mapNodes.find(nd=>nd.week===activeWeek);
+  const nextNodeData = mapNodes.find(nd=>nd.week===activeWeek+1) || null;
+  const weekStartIdx = weekIndices(activeWeek)[0];
+  const weekFrac = Math.max(0, Math.min(1, (pointer - weekStartIdx)/7));
+
+  const segIdx = Math.max(0, Math.min(7, Math.floor(pointer/7)));
+  const segT = Math.max(0, Math.min(1, (pointer - segIdx*7)/7));
+  const pa = ROAD_ANCHORS[segIdx], pb = ROAD_ANCHORS[segIdx+1];
+  const pos = segmentPoint(pa, pb, segT);
+  const facingRight = (pb.x - pa.x) > 0;
+
+  let mapHtml;
+  if(mapExpanded){
+    mapHtml = `<div class="road-map expanded">
+      <svg class="road-svg" viewBox="0 0 100 1860" preserveAspectRatio="none">
+        <path class="road-base" d="M 50 30 C 50 95 24 95 24 160 C 24 265 76 265 76 370 C 76 475 24 475 24 580 C 24 685 76 685 76 790 C 76 895 24 895 24 1000 C 24 1105 76 1105 76 1210 C 76 1315 24 1315 24 1420 C 24 1525 76 1525 76 1630 C 76 1670 76 1690 76 1700"></path>
+        <path class="road-dash" d="M 50 30 C 50 95 24 95 24 160 C 24 265 76 265 76 370 C 76 475 24 475 24 580 C 24 685 76 685 76 790 C 76 895 24 895 24 1000 C 24 1105 76 1105 76 1210 C 76 1315 24 1315 24 1420 C 24 1525 76 1525 76 1630 C 76 1670 76 1690 76 1700"></path>
+      </svg>
+      <div class="start-pin">${START_PIN_SVG}<div class="start-label">START</div></div>
+      ${mapNodes.map(n=>`
+        <div class="map-node ${n.isLocked?'locked':''}" style="left:${n.left}%;top:${n.top}px;" onclick="mapNodeClick(${n.week})">
+          <div class="scene-wrap">
+            <div class="scene-icon ${n.isLocked?'is-locked':''}">${n.icon}</div>
+            <div class="node-badge ${n.isCurrent?'current':''}" style="background:${n.isComplete?'var(--done)':n.isCurrent?'var(--accent)':'var(--bg-raised)'};border-color:${n.isComplete?'var(--done)':n.isCurrent?'var(--accent)':'var(--line)'};color:${n.isCurrent?'#14171c':'var(--text-dim)'};">
+              ${n.isComplete ? CHECK_SVG : n.isLocked ? LOCK_SVG : `<span>${n.week}</span>`}
+            </div>
+          </div>
+          <div class="postcard" style="transform:rotate(${n.tilt}deg);">
+            <div class="pc-eyebrow">WEEK ${n.week} · ${n.nameUpper}</div>
+            <div class="pc-title">${n.focusLabel}</div>
+          </div>
+        </div>`).join('')}
+      <div class="map-car" style="left:${pos.x}%;top:${pos.y}px;transform:translate(-50%,-50%) rotate(${facingRight?-9:9}deg);">🚗</div>
+    </div>
+    <div class="map-toggle"><a onclick="toggleMap()">Collapse map</a></div>`;
+  } else {
+    mapHtml = `<div class="road-map">
+      <div class="collapsed-inner">
+        <div class="scene-icon big">${currentNodeData.icon}</div>
+        <div class="postcard">
+          <div class="pc-eyebrow">WEEK ${currentNodeData.week} · ${currentNodeData.nameUpper}</div>
+          <div class="pc-title">${currentNodeData.focusLabel}</div>
+        </div>
+        <div class="rail-row">
+          <div class="rail"><div class="rail-dash"></div><div class="rail-car" style="left:${4+weekFrac*88}%;">🚗</div></div>
+          ${nextNodeData ? `<div class="next-thumb">${nextNodeData.icon}</div>` : ''}
+        </div>
+      </div>
+    </div>
+    <div class="map-toggle"><a onclick="toggleMap()">Show full map</a></div>`;
   }
 
-  let bodyHtml = '';
+  const badgeListHtml = badgesOpen ? `<div class="badges-panel">${BADGE_DEFS.map(b=>{
+    const earned = badges.includes(b.id);
+    return `<div class="badge-row">
+      ${badgeShield(earned ? b.color : '#3a4048').replace('style="flex-shrink:0;"', `class="badge-icon" style="opacity:${earned?1:0.45}"`)}
+      <div><div class="badge-name" style="color:${earned?'var(--text)':'var(--text-faint)'}">${b.name}</div><div class="badge-desc">${b.desc}</div></div>
+    </div>`;
+  }).join('')}</div>` : '';
 
+  const wk = day.week;
+  const idxs = weekIndices(wk);
+  const stripDoneCount = idxs.filter(i=>dayStatus[i]==='done').length;
+  const dayStripHtml = idxs.map(i=>{
+    let cls='dtick';
+    if(dayStatus[i]==='done') cls+=' done'; else if(dayStatus[i]==='skipped') cls+=' skipped';
+    if(PLAN[i].type==='rest') cls+=' type-rest';
+    if(i===viewIndex) cls+=' current';
+    return `<div class="${cls}" title="${PLAN[i].dow}: ${PLAN[i].title}" onclick="setView(${i})"></div>`;
+  }).join('');
+
+  let bodyHtml = '';
   if(pointer>=TOTAL){
-    bodyHtml += `<div class="card finish"><div class="eyebrow">Program Complete</div><h2>8 Weeks Done</h2><p class="sub">You've completed every scheduled workout. Browse the track above to revisit any week, or reset to run it again at a higher weight.</p></div>`;
-  } else {
-    if(!isPointerView){
-      const status = dayStatus[viewIndex];
-      const label = status==='done' ? 'completed' : status==='skipped' ? 'skipped' : 'not yet reached';
-      bodyHtml += `<div class="preview-banner"><span>Previewing <b>Week ${day.week}, ${day.dow}</b> (${label}). Your next workout is <b>Week ${PLAN[pointer].week}, ${PLAN[pointer].dow}</b>.</span>
-        <button class="btn-jump" onclick="setView(${pointer})">Go to next workout</button></div>`;
-    }
+    bodyHtml += `<div class="card finish"><div class="eyebrow">Program Complete</div><h2>8 Weeks Done</h2><p class="sub">You've completed every scheduled workout. Browse the map above to revisit any week, or reset to run it again at a higher weight.</p></div>`;
+  } else if(!isPointerView){
+    const status = dayStatus[viewIndex];
+    const label = status==='done' ? 'completed' : status==='skipped' ? 'skipped' : 'not yet reached';
+    bodyHtml += `<div class="preview-banner"><span>Previewing <b>Week ${day.week}, ${day.dow}</b> (${label}). Your next workout is <b>Week ${PLAN[pointer].week}, ${PLAN[pointer].dow}</b>.</span>
+      <button class="btn-jump" onclick="setView(${pointer})">Go to next workout</button></div>`;
   }
 
   const badgeClass = day.type==='long'?'long':day.type==='short'?'short':'rest';
@@ -493,21 +856,19 @@ function render(){
     bodyHtml += `<div class="run-note">This is a short day — designed to follow a run. Keep it efficient; upper body and core only.</div>`;
   }
 
-  if(day.warmup && day.warmup.length){
-    bodyHtml += `<div class="section"><div class="section-label">Warm-up</div>${exList(day.warmup)}</div>`;
-  }
-  if(day.main && day.main.length){
-    bodyHtml += `<div class="section"><div class="section-label">Lifts</div>${exList(day.main)}</div>`;
-  }
-  if(day.core && day.core.length){
-    bodyHtml += `<div class="section"><div class="section-label">Core</div>${exList(day.core)}</div>`;
-  }
-  if(day.stretch && day.stretch.length){
-    bodyHtml += `<div class="section"><div class="section-label stretch">Stretch — Cool Down</div>${exList(day.stretch)}</div>`;
-  }
+  const sectionDefs = [
+    {key:'warmup', label:'Warm-up', cls:''},
+    {key:'main', label:'Lifts', cls:''},
+    {key:'core', label:'Core', cls:''},
+    {key:'stretch', label:'Stretch — Cool Down', cls:'stretch'}
+  ];
+  sectionDefs.forEach(sec=>{
+    const items = day[sec.key];
+    if(!items || !items.length) return;
+    bodyHtml += `<div class="section"><div class="section-label ${sec.cls}">${sec.label}</div>${exList(items, viewIndex+'-'+sec.key)}</div>`;
+  });
 
   const viewStatus = dayStatus[viewIndex];
-
   if(viewStatus==='done'){
     bodyHtml += `<div class="done-banner">Marked complete. Tapped by accident? You can undo it below.</div>`;
   } else if(viewStatus==='skipped'){
@@ -532,34 +893,52 @@ function render(){
 
   bodyHtml += `</div>`;
 
+  const toastsHtml = toasts.map(t=>`<div class="toast" style="border-color:${t.color};">${badgeShield(t.color)}${t.msg}</div>`).join('');
+  const levelUpHtml = levelUp ? `<div class="levelup-overlay"><div class="levelup-card"><div class="levelup-bar"></div><div class="levelup-eyebrow">Level Up</div><h2 class="levelup-title">Lv. ${levelUp.level}</h2></div></div>` : '';
+  const confettiHtml = confetti.map(c=>`<div class="confetti-piece" style="left:${c.left}vw;width:${c.size}px;height:${c.height}px;background:${c.color};animation-duration:${c.duration}s;"></div>`).join('');
+
   app.innerHTML = `
     <div class="header-card">
       <div class="eyebrow">8-Week Upper Body Program · ${day.phase}</div>
       <h1>Day ${viewIndex+1} / ${TOTAL}</h1>
       <p class="sub" style="margin-bottom:0;">Runner base, building push/pull/core strength from zero. Tap any marker below to preview a day.</p>
+      <div class="stats-row">
+        <div class="streak-pill">${streak} day streak</div>
+        <div class="level-pill">Lv.${level}</div>
+        <div class="xp-wrap">
+          <div class="xp-track"><div class="xp-fill" style="width:${xpPercent}%;"></div></div>
+          <div class="xp-label">${into} / ${XP_PER_LEVEL} XP</div>
+        </div>
+      </div>
     </div>
 
-    <div class="track-wrap">
-      <div class="track-label"><span>WEEK 1</span><span>WEEK 8</span></div>
-      <div class="track">${trackHtml}</div>
-      <div class="status-row">
-        <span><span class="dot" style="background:var(--done)"></span>${doneCount} done</span>
-        <span><span class="dot" style="background:var(--skip)"></span>${skipCount} skipped</span>
-        <span><span class="dot" style="background:var(--accent)"></span>current</span>
-      </div>
+    ${mapHtml}
+
+    ${lockMessage ? `<div class="lock-message">${lockMessage}</div>` : ''}
+
+    <button class="badges-toggle" onclick="toggleBadges()"><span>Badges — ${badges.length}/${BADGE_DEFS.length}</span><span>${badgesOpen?'▲':'▼'}</span></button>
+    ${badgeListHtml}
+
+    <div class="day-strip-wrap">
+      <div class="day-strip-label"><span>WEEK ${wk} DAYS</span><span>${stripDoneCount}/${idxs.length} done</span></div>
+      <div class="day-strip">${dayStripHtml}</div>
     </div>
 
     ${bodyHtml}
 
     ${resetConfirming ? `
     <div class="reset-confirm">
-      <p>Reset all progress? This can't be undone.</p>
+      <p>Reset all progress — including XP, streak, and badges? This can't be undone.</p>
       <div class="actions">
         <button class="btn-nav" onclick="cancelReset()">Cancel</button>
         <button class="btn-danger" onclick="confirmReset()">Yes, Reset Everything</button>
       </div>
     </div>` : `
     <div class="reset-link"><a onclick="requestReset()">Reset all progress</a></div>`}
+
+    ${toastsHtml}
+    ${levelUpHtml}
+    ${confettiHtml}
   `;
 }
 
