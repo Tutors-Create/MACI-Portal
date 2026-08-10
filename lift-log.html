@@ -801,7 +801,7 @@ function render(){
             <div class="pc-title">${n.focusLabel}</div>
           </div>
         </div>`).join('')}
-      <div class="map-car" style="left:${pos.x}%;top:${pos.y}px;transform:translate(-50%,-50%) rotate(${facingRight?-9:9}deg);">🚗</div>
+      <div class="map-car" style="left:${pos.x}%;top:${pos.y}px;transform:translate(-50%,-50%) ${facingRight?'scaleX(-1) rotate(-9deg)':'rotate(9deg)'};">🚗</div>
     </div>
     <div class="map-toggle"><a onclick="toggleMap()">Collapse map</a></div>`;
   } else {
@@ -813,7 +813,7 @@ function render(){
           <div class="pc-title">${currentNodeData.focusLabel}</div>
         </div>
         <div class="rail-row">
-          <div class="rail"><div class="rail-dash"></div><div class="rail-car" style="left:${4+weekFrac*88}%;">🚗</div></div>
+          <div class="rail"><div class="rail-dash"></div><div class="rail-car" style="left:${4+weekFrac*88}%;transform:translate(-50%,-50%) scaleX(-1);">🚗</div></div>
           ${nextNodeData ? `<div class="next-thumb"><img src="${nextNodeData.icon}" alt="${nextNodeData.nameUpper}"></div>` : ''}
         </div>
       </div>
